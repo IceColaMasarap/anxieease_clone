@@ -14,10 +14,23 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print('AuthScreen build - isLogin: $isLogin');
     return Scaffold(
       body: isLogin
-          ? LoginScreen(onSwitch: () => setState(() => isLogin = false))
-          : RegisterScreen(onSwitch: () => setState(() => isLogin = true)),
+          ? LoginScreen(onSwitch: () {
+              print('Switching to Register Screen');
+              setState(() {
+                isLogin = false;
+                print('State updated - isLogin is now: $isLogin');
+              });
+            })
+          : RegisterScreen(onSwitch: () {
+              print('Switching to Login Screen');
+              setState(() {
+                isLogin = true;
+                print('State updated - isLogin is now: $isLogin');
+              });
+            }),
     );
   }
 }

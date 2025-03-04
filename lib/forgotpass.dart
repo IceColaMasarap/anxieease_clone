@@ -1,7 +1,68 @@
 import 'package:flutter/material.dart';
+import 'services/supabase_service.dart';
 
-class Forgotpass extends StatelessWidget {
+class Forgotpass extends StatefulWidget {
   const Forgotpass({super.key});
+
+  @override
+  State<Forgotpass> createState() => _ForgotpassState();
+}
+
+class _ForgotpassState extends State<Forgotpass> {
+  final TextEditingController _emailController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+  bool _resetEmailSent = false;
+
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your email address';
+      });
+      return;
+    }
+
+    // Basic email validation
+    if (!email.contains('@') || !email.contains('.')) {
+      setState(() {
+        _errorMessage = 'Please enter a valid email address';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      print('Requesting password reset for email: $email');
+      await SupabaseService().resetPassword(email);
+      print('Password reset request successful');
+      
+      setState(() {
+        _resetEmailSent = true;
+      });
+    } catch (e) {
+      print('Error in forgot password screen: $e');
+      setState(() {
+        _errorMessage = e.toString().contains('Exception:') 
+            ? e.toString().split('Exception: ')[1]
+            : 'Failed to send reset email. Please try again.';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,8 +128,39 @@ class Forgotpass extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (_resetEmailSent)
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        'Password reset email sent! Please check your inbox.',
+                        style: TextStyle(color: Colors.white),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+
+                  if (_errorMessage != null)
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        _errorMessage!,
+                        style: const TextStyle(color: Colors.white),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+
                   // 🔹 Email Input Field
                   TextField(
+                    controller: _emailController,
                     decoration: InputDecoration(
                       hintText: "Enter your Email",
                       hintStyle: const TextStyle(color: Colors.white70),
@@ -86,13 +178,15 @@ class Forgotpass extends StatelessWidget {
                     ),
                     style: const TextStyle(color: Colors.white),
                     keyboardType: TextInputType.emailAddress,
+                    enabled: !_isLoading && !_resetEmailSent,
                   ),
 
                   const SizedBox(height: 40),
 
                   // 🔹 Reset Password Button
                   ElevatedButton(
-                    onPressed: () {},
+                    onPressed:
+                        _isLoading || _resetEmailSent ? null : _resetPassword,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white.withOpacity(0.3),
                       shape: RoundedRectangleBorder(
@@ -101,10 +195,20 @@ class Forgotpass extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 15),
                       elevation: 0,
                     ),
-                    child: const Text(
-                      "Reset Password",
-                      style: TextStyle(fontSize: 18, color: Colors.white),
-                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Text(
+                            _resetEmailSent ? "Email Sent" : "Reset Password",
+                            style: const TextStyle(
+                                fontSize: 18, color: Colors.white),
+                          ),
                   ),
 
                   const SizedBox(height: 45),

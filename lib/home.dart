@@ -4,7 +4,6 @@ import 'profile.dart';
 import 'search.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'services/breathing_service.dart';
 import 'breathing_screen.dart';
 
 class HomeScreen extends StatefulWidget {

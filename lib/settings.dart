@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
 import 'profile.dart'; // Add this import
-import 'auth.dart'; // Import for logout navigation
+import 'services/supabase_service.dart';
+import 'login.dart'; // For navigation after logout
+// Import for logout navigation
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -100,6 +100,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   TextButton(
                                     onPressed: () => Navigator.pop(context),
                                     child: const Text('OK'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        _buildSettingsTile(
+                          icon: Icons.logout,
+                          title: 'Logout',
+                          subtitle: 'Sign out of your account',
+                          onTap: () async {
+                            showDialog(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Logout'),
+                                content: const Text(
+                                    'Are you sure you want to logout?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () async {
+                                      await SupabaseService().signOut();
+                                      if (mounted) {
+                                        Navigator.of(context)
+                                            .pushAndRemoveUntil(
+                                          MaterialPageRoute(
+                                            builder: (context) => LoginScreen(
+                                              onSwitch: () {
+                                                // This won't be called as we're coming from logout
+                                              },
+                                            ),
+                                          ),
+                                          (route) => false,
+                                        );
+                                      }
+                                    },
+                                    child: const Text('Logout',
+                                        style: TextStyle(color: Colors.red)),
                                   ),
                                 ],
                               ),
