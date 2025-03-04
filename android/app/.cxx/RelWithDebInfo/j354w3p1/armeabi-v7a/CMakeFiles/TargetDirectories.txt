@@ -1,0 +1,2 @@
+C:/Users/molin/Downloads/updated_ctrlzed-main/android/app/.cxx/RelWithDebInfo/j354w3p1/armeabi-v7a/CMakeFiles/edit_cache.dir
+C:/Users/molin/Downloads/updated_ctrlzed-main/android/app/.cxx/RelWithDebInfo/j354w3p1/armeabi-v7a/CMakeFiles/rebuild_cache.dir

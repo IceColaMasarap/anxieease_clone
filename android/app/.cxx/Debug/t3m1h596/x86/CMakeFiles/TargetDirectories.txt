@@ -1,0 +1,2 @@
+C:/Users/MSI Bravo/Documents/a/AnxieEase-1/android/app/.cxx/Debug/t3m1h596/x86/CMakeFiles/edit_cache.dir
+C:/Users/MSI Bravo/Documents/a/AnxieEase-1/android/app/.cxx/Debug/t3m1h596/x86/CMakeFiles/rebuild_cache.dir

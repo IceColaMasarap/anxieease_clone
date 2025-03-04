@@ -1,0 +1,2 @@
+C:/Users/molin/Downloads/updated_ctrlzed-main/android/app/.cxx/Debug/4v2v2g4o/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/molin/Downloads/updated_ctrlzed-main/android/app/.cxx/Debug/4v2v2g4o/arm64-v8a/CMakeFiles/rebuild_cache.dir
