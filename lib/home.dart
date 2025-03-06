@@ -5,6 +5,43 @@ import 'search.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'breathing_screen.dart';
+import 'calendar_screen.dart';
+import 'metrics.dart';
+import 'settings.dart';
+
+class Task {
+  final String id;
+  final String title;
+  final DateTime dateTime;
+  bool isCompleted;
+
+  Task({
+    required this.id,
+    required this.title,
+    required this.dateTime,
+    this.isCompleted = false,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'dateTime': dateTime.toIso8601String(),
+      'isCompleted': isCompleted,
+    };
+  }
+
+  factory Task.fromJson(Map<String, dynamic> json) {
+    return Task(
+      id: json['id'],
+      title: json['title'],
+      dateTime: DateTime.parse(json['dateTime']),
+      isCompleted: json['isCompleted'],
+    );
+  }
+
+  bool get isExpired => DateTime.now().isAfter(dateTime) && !isCompleted;
+}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const String TASKS_KEY = 'tasks';
   late double screenWidth;
   late double screenHeight;
+  int _selectedIndex = 0;
   final List<String> moods = [
     'Happy',
     'Fearful',
@@ -82,226 +120,9 @@ class _HomeScreenState extends State<HomeScreen> {
     screenWidth = MediaQuery.of(context).size.width;
     screenHeight = MediaQuery.of(context).size.height;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // App Bar with Profile
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: screenWidth * 0.05,
-                vertical: screenWidth * 0.03,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Hello Mejia',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.055,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1E2432),
-                        ),
-                      ),
-                      Text(
-                        'Welcome back',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.035,
-                          color: const Color(0xFF7C8495),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.teal.withOpacity(0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      radius: screenWidth * 0.055,
-                      backgroundColor: Colors.teal[50],
-                      child: Icon(
-                        Icons.person_outline,
-                        color: Colors.teal[700],
-                        size: screenWidth * 0.055,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            Expanded(
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.all(screenWidth * 0.05),
-                      child: _buildBreathingCard(),
-                    ),
-                  ),
-
-                  // Quick Actions Section
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 3,
-                                height: 20,
-                                decoration: BoxDecoration(
-                                  color: Colors.teal[700],
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                              ),
-                              SizedBox(width: screenWidth * 0.02),
-                              Text(
-                                'Quick Actions',
-                                style: TextStyle(
-                                  fontSize: screenWidth * 0.045,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF1E2432),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: screenHeight * 0.02),
-                          _buildQuickActionsGrid(),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Tasks Section
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.all(screenWidth * 0.05),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 3,
-                            height: 20,
-                            decoration: BoxDecoration(
-                              color: Colors.teal[700],
-                              borderRadius: BorderRadius.circular(3),
-                            ),
-                          ),
-                          SizedBox(width: screenWidth * 0.02),
-                          Text(
-                            'Today\'s Tasks',
-                            style: TextStyle(
-                              fontSize: screenWidth * 0.045,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF1E2432),
-                            ),
-                          ),
-                          const Spacer(),
-                          TextButton.icon(
-                            onPressed: _showDateTimePicker,
-                            icon: Icon(Icons.add,
-                                size: 20, color: Colors.teal[700]),
-                            label: Text(
-                              'Add Task',
-                              style: TextStyle(color: Colors.teal[700]),
-                            ),
-                            style: TextButton.styleFrom(
-                              backgroundColor: Colors.teal[50],
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Tasks List
-                  SliverPadding(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
-                    sliver: tasks.isEmpty
-                        ? SliverToBoxAdapter(
-                            child: _buildEmptyTasksPlaceholder())
-                        : SliverList(
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) => Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: _buildTaskItem(tasks[index]),
-                              ),
-                              childCount: tasks.length,
-                            ),
-                          ),
-                  ),
-
-                  // Express Feelings Section
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.all(screenWidth * 0.05),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 3,
-                                height: 20,
-                                decoration: BoxDecoration(
-                                  color: Colors.teal[700],
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                              ),
-                              SizedBox(width: screenWidth * 0.02),
-                              Text(
-                                'Express Your Feelings',
-                                style: TextStyle(
-                                  fontSize: screenWidth * 0.045,
-                                  fontWeight: FontWeight.bold,
-                                  color: const Color(0xFF1E2432),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: screenHeight * 0.02),
-                          _buildFeelingsGrid(),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+    return const Scaffold(
+      backgroundColor: Color(0xFFF8F9FE),
+      body: HomeContent(),
     );
   }
 
@@ -1393,100 +1214,160 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildFeelingsGrid() {
-    final List<Map<String, dynamic>> feelings = [
+  // New Notifications Section
+  Widget _buildNotificationsSection() {
+    // Sample notifications - replace with actual notifications from wearable
+    final List<Map<String, dynamic>> notifications = [
       {
-        'title': 'Mood',
-        'icon': Icons.mood,
-        'color': const Color(0xFF4A90E2),
-        'onTap': _showMoodTracker
+        'title': 'High Heart Rate Detected',
+        'message': 'Your heart rate was above normal at 120 BPM',
+        'time': '2 min ago',
+        'type': 'warning',
+        'icon': Icons.favorite,
       },
       {
-        'title': 'Stress',
-        'icon': Icons.psychology,
-        'color': const Color(0xFFF5A623),
-        'onTap': _showStressTracker
+        'title': 'Stress Level Alert',
+        'message': 'Elevated stress levels detected. Consider taking a break.',
+        'time': '15 min ago',
+        'type': 'alert',
+        'icon': Icons.warning_amber,
       },
       {
-        'title': 'Symptoms',
-        'icon': Icons.healing,
-        'color': const Color(0xFF50E3C2),
-        'onTap': _showPhysicalSymptomsTracker
-      },
-      {
-        'title': 'Activities',
-        'icon': Icons.directions_run,
-        'color': const Color(0xFF9013FE),
-        'onTap': _showActivitiesTracker
+        'title': 'Movement Pattern Change',
+        'message': 'Unusual movement patterns detected. Are you feeling okay?',
+        'time': '1 hour ago',
+        'type': 'info',
+        'icon': Icons.directions_walk,
       },
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: screenWidth * 0.03,
-        mainAxisSpacing: screenWidth * 0.03,
-        childAspectRatio: 1.5,
-      ),
-      itemCount: feelings.length,
-      itemBuilder: (context, index) {
-        final feeling = feelings[index];
-        return _buildFeelingsCard(
-          feeling['title'],
-          feeling['icon'],
-          feeling['color'],
-          feeling['onTap'],
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 3,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Colors.teal[700],
+                borderRadius: BorderRadius.circular(3),
+              ),
+            ),
+            SizedBox(width: screenWidth * 0.02),
+            Text(
+              'Recent Notifications',
+              style: TextStyle(
+                fontSize: screenWidth * 0.045,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF1E2432),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: screenHeight * 0.02),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: notifications.length,
+          itemBuilder: (context, index) {
+            final notification = notifications[index];
+            return _buildNotificationCard(
+              title: notification['title'],
+              message: notification['message'],
+              time: notification['time'],
+              type: notification['type'],
+              icon: notification['icon'],
+            );
+          },
+        ),
+      ],
     );
   }
 
-  Widget _buildFeelingsCard(
-      String title, IconData icon, Color color, VoidCallback onTap) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: EdgeInsets.all(screenWidth * 0.04),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: color.withOpacity(0.2),
-              width: 1.5,
+  Widget _buildNotificationCard({
+    required String title,
+    required String message,
+    required String time,
+    required String type,
+    required IconData icon,
+  }) {
+    Color getTypeColor() {
+      switch (type) {
+        case 'warning':
+          return Colors.orange;
+        case 'alert':
+          return Colors.red;
+        case 'info':
+          return Colors.blue;
+        default:
+          return Colors.grey;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: getTypeColor().withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              icon,
+              color: getTypeColor(),
+              size: 24,
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: EdgeInsets.all(screenWidth * 0.02),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Color(0xFF1E2432),
+                  ),
                 ),
-                child: Icon(
-                  icon,
-                  color: color,
-                  size: screenWidth * 0.06,
+                const SizedBox(height: 4),
+                Text(
+                  message,
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
                 ),
-              ),
-              SizedBox(height: screenWidth * 0.02),
-              Text(
-                title,
-                style: TextStyle(
-                  color: color.withOpacity(0.8),
-                  fontSize: screenWidth * 0.04,
-                  fontWeight: FontWeight.w600,
+                const SizedBox(height: 4),
+                Text(
+                  time,
+                  style: TextStyle(
+                    color: Colors.grey[400],
+                    fontSize: 12,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1595,7 +1476,7 @@ class _HomeScreenState extends State<HomeScreen> {
         'icon': Icons.calendar_today,
         'title': 'Calendar',
         'color': const Color(0xFF3EAD7A),
-        'onTap': _showDateTimePicker,
+        'screen': const CalendarScreen(),
       },
       {
         'icon': Icons.navigation,
@@ -1609,26 +1490,24 @@ class _HomeScreenState extends State<HomeScreen> {
       height: 90,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: actions
-            .map((action) => Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: _buildActionCard(
-                      icon: action['icon'],
-                      title: action['title'],
-                      color: action['color'],
-                      onTap: action['screen'] != null
-                          ? () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => action['screen'],
-                                ),
-                              )
-                          : action['onTap'],
-                    ),
+        children: List<Widget>.from(actions.map((action) => 
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: _buildActionCard(
+                icon: action['icon'],
+                title: action['title'],
+                color: action['color'],
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => action['screen'],
                   ),
-                ))
-            .toList(),
+                ),
+              ),
+            ),
+          ),
+        )),
       ),
     );
   }
@@ -1757,127 +1636,203 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class NotificationCard extends StatelessWidget {
-  final String message;
-  final String time;
-
-  const NotificationCard({
-    super.key,
-    required this.message,
-    required this.time,
-  });
+class HomeContent extends StatelessWidget {
+  const HomeContent({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+
+    return SafeArea(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            message,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            time,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.black54,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class BatteryIndicator extends StatelessWidget {
-  final double batteryLevel;
-
-  const BatteryIndicator({super.key, required this.batteryLevel});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 40,
-      height: 20,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: Stack(
-        children: [
+          // App Bar with Profile
           Container(
-            width: batteryLevel * 36,
-            margin: const EdgeInsets.all(2),
+            padding: EdgeInsets.symmetric(
+              horizontal: screenWidth * 0.05,
+              vertical: screenWidth * 0.03,
+            ),
             decoration: BoxDecoration(
-              color: batteryLevel > 0.2 ? Colors.green : Colors.red,
-              borderRadius: BorderRadius.circular(1),
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Hello Mejia',
+                      style: TextStyle(
+                        fontSize: screenWidth * 0.055,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF1E2432),
+                      ),
+                    ),
+                    Text(
+                      'Welcome back',
+                      style: TextStyle(
+                        fontSize: screenWidth * 0.035,
+                        color: const Color(0xFF7C8495),
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.teal.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: screenWidth * 0.055,
+                    backgroundColor: Colors.teal[50],
+                    child: Icon(
+                      Icons.person_outline,
+                      color: Colors.teal[700],
+                      size: screenWidth * 0.055,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          Positioned(
-            right: 2,
-            top: 5,
-            bottom: 5,
-            child: Container(
-              width: 2,
-              decoration: BoxDecoration(
-                color: Colors.grey,
-                borderRadius: BorderRadius.circular(1),
-              ),
+
+          Expanded(
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(screenWidth * 0.05),
+                    child: homeState?._buildBreathingCard(),
+                  ),
+                ),
+
+                // Quick Actions Section
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 3,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: Colors.teal[700],
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                            ),
+                            SizedBox(width: screenWidth * 0.02),
+                            Text(
+                              'Quick Actions',
+                              style: TextStyle(
+                                fontSize: screenWidth * 0.045,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF1E2432),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: screenHeight * 0.02),
+                        homeState?._buildQuickActionsGrid() ?? Container(),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Tasks Section
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(screenWidth * 0.05),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 3,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Colors.teal[700],
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                        SizedBox(width: screenWidth * 0.02),
+                        Text(
+                          'Today\'s Tasks',
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.045,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1E2432),
+                          ),
+                        ),
+                        const Spacer(),
+                        TextButton.icon(
+                          onPressed: () => homeState?._showDateTimePicker(),
+                          icon: Icon(Icons.add, size: 20, color: Colors.teal[700]),
+                          label: Text(
+                            'Add Task',
+                            style: TextStyle(color: Colors.teal[700]),
+                          ),
+                          style: TextButton.styleFrom(
+                            backgroundColor: Colors.teal[50],
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Tasks List
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+                  sliver: homeState?.tasks.isEmpty ?? true
+                      ? SliverToBoxAdapter(
+                          child: homeState?._buildEmptyTasksPlaceholder())
+                      : SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: homeState?._buildTaskItem(
+                                  homeState.tasks[index]),
+                            ),
+                            childCount: homeState?.tasks.length ?? 0,
+                          ),
+                        ),
+                ),
+
+                // New Notifications Section
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.all(screenWidth * 0.05),
+                    child: homeState?._buildNotificationsSection(),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
-}
-
-class Task {
-  final String id;
-  final String title;
-  final DateTime dateTime;
-  bool isCompleted;
-
-  Task({
-    required this.id,
-    required this.title,
-    required this.dateTime,
-    this.isCompleted = false,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'dateTime': dateTime.toIso8601String(),
-      'isCompleted': isCompleted,
-    };
-  }
-
-  factory Task.fromJson(Map<String, dynamic> json) {
-    return Task(
-      id: json['id'],
-      title: json['title'],
-      dateTime: DateTime.parse(json['dateTime']),
-      isCompleted: json['isCompleted'],
-    );
-  }
-
-  bool get isExpired => DateTime.now().isAfter(dateTime) && !isCompleted;
 }

@@ -19,6 +19,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController confirmPasswordController =
       TextEditingController();
   bool agreeToTerms = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   void _submit(BuildContext context) async {
     if (!agreeToTerms) {
@@ -213,12 +215,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(height: 15),
                       _buildInputField(emailController, "Email"),
                       const SizedBox(height: 15),
-                      _buildInputField(passwordController, "Password",
-                          obscureText: true),
+                      _buildInputField(passwordController, "Password"),
                       const SizedBox(height: 15),
                       _buildInputField(
-                          confirmPasswordController, "Confirm Password",
-                          obscureText: true),
+                          confirmPasswordController, "Confirm Password"),
                       const SizedBox(height: 15),
                       Row(
                         children: [
@@ -297,20 +297,64 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildInputField(TextEditingController controller, String hint,
+  Widget _buildInputField(TextEditingController controller, String label,
       {bool obscureText = false}) {
-    return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(25),
-          borderSide: const BorderSide(color: Colors.black26),
+    bool isPassword = label.toLowerCase().contains('password');
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: isPassword
+            ? (label == "Password" ? _obscurePassword : _obscureConfirmPassword)
+            : false,
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Colors.grey),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey.shade300),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF00634A)),
+          ),
+          suffixIcon: isPassword
+              ? IconButton(
+                  icon: Icon(
+                    label == "Password"
+                        ? (_obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility)
+                        : (_obscureConfirmPassword
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                    color: Colors.grey,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      if (label == "Password") {
+                        _obscurePassword = !_obscurePassword;
+                      } else {
+                        _obscureConfirmPassword = !_obscureConfirmPassword;
+                      }
+                    });
+                  },
+                )
+              : null,
         ),
       ),
     );

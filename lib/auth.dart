@@ -3,34 +3,56 @@ import 'login.dart';
 import 'register.dart';
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({super.key});
+  final String? message;
+  final bool showLogin;
+
+  const AuthScreen({
+    super.key, 
+    this.message,
+    this.showLogin = true,
+  });
 
   @override
   _AuthScreenState createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  bool isLogin = true; // Toggles between Login & Register
+  late bool isLogin;
+
+  @override
+  void initState() {
+    super.initState();
+    isLogin = widget.showLogin;
+    
+    // Show message if provided
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.message != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.message!),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    print('AuthScreen build - isLogin: $isLogin');
-    return Scaffold(
-      body: isLogin
-          ? LoginScreen(onSwitch: () {
-              print('Switching to Register Screen');
+    return isLogin
+        ? LoginScreen(
+            onSwitch: () {
               setState(() {
                 isLogin = false;
-                print('State updated - isLogin is now: $isLogin');
               });
-            })
-          : RegisterScreen(onSwitch: () {
-              print('Switching to Login Screen');
+            },
+          )
+        : RegisterScreen(
+            onSwitch: () {
               setState(() {
                 isLogin = true;
-                print('State updated - isLogin is now: $isLogin');
               });
-            }),
-    );
+            },
+          );
   }
 }

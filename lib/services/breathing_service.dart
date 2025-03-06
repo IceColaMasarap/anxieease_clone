@@ -41,7 +41,7 @@ class BreathingExercise {
       exhaleTime: 4,
       holdOutTime: 4,
       technique: 'Equal counts for inhale, hold, exhale, and hold',
-      soundUrl: null,
+      soundUrl: 'assets/audio/boxbreathing.mp3',
     ),
     BreathingExercise(
       id: '3',
@@ -50,7 +50,7 @@ class BreathingExercise {
       inhaleTime: 4,
       exhaleTime: 6,
       technique: 'Longer exhale to activate relaxation response',
-      soundUrl: null,
+      soundUrl: 'assets/audio/calmingbreath.mp3',
     ),
   ];
 }

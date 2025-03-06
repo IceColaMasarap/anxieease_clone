@@ -31,7 +31,49 @@ class _BreathingScreenState extends State<BreathingScreen>
     "Trust in your inner strength",
     "You're safe and in control",
     "This feeling will pass",
+    
+    "Focus on your breath, nothing else matters",
+    "Notice the rhythm of your breathing",
+    "Be here, in this peaceful moment",
+    "Your breath is your anchor",
+    
+    "Feel the tension leaving your body",
+    "With each breath, you become more relaxed",
+    "Your body knows how to find peace",
+    "Embrace the feeling of calmness",
+    
+    "You have the power to calm your mind",
+    "You're building inner strength",
+    "Every breath makes you stronger",
+    "You're taking care of yourself",
+    
+    "You're doing something positive for yourself",
+    "Keep going, you're doing well",
+    "This is your time for peace",
+    "You deserve this moment of calm",
+    
+    "Anxiety cannot control you",
+    "You are bigger than your worries",
+    "Your breath is your safe space",
+    "Peace is within your reach",
+    
+    "Feel your feet on the ground",
+    "Notice the rise and fall of your chest",
+    "Your breath connects mind and body",
+    "You are grounded and secure",
+    
+    "Be gentle with yourself",
+    "You're worth this moment of peace",
+    "Accept yourself as you are",
+    "You're taking positive steps",
+    
+    "This is your moment of peace",
+    "Right here, right now, you're okay",
+    "Each breath is a fresh start",
+    "Find peace in this moment",
   ];
+
+  int _lastMessageIndex = -1;
 
   @override
   void initState() {
@@ -321,6 +363,10 @@ class _BreathingScreenState extends State<BreathingScreen>
     _animationController!.addListener(() {
       if (!_isDisposed && mounted) {
         setState(() {}); // Ensure the animation updates the UI
+        // Update message every cycle
+        if (_animationController!.value >= 0.99) {
+          _updateMotivationalMessage();
+        }
       }
     });
 
@@ -351,20 +397,24 @@ class _BreathingScreenState extends State<BreathingScreen>
   Future<void> _setupAudio() async {
     if (selectedExercise?.soundUrl != null) {
       try {
+        print('Setting up audio for ${selectedExercise!.name}');
+        print('Audio file path: ${selectedExercise!.soundUrl}');
         await _audioPlayer.setAsset(selectedExercise!.soundUrl!);
         await _audioPlayer.setLoopMode(LoopMode.one);
+        print('Audio setup completed successfully');
       } catch (e) {
-        print('Audio not available: ${selectedExercise!.soundUrl} - Error: $e');
+        print('Audio setup failed: ${selectedExercise!.soundUrl} - Error: $e');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content:
-                  Text('Audio guidance is not available for this exercise'),
-              duration: Duration(seconds: 2),
+            SnackBar(
+              content: Text('Audio setup failed: $e'),
+              duration: const Duration(seconds: 2),
             ),
           );
         }
       }
+    } else {
+      print('No audio file specified for ${selectedExercise?.name}');
     }
   }
 
@@ -463,8 +513,13 @@ class _BreathingScreenState extends State<BreathingScreen>
 
   void _updateMotivationalMessage() {
     if (_isPlaying.value) {
-      _motivationalMessage.value = _motivationalMessages[
-          DateTime.now().millisecondsSinceEpoch % _motivationalMessages.length];
+      int newIndex;
+      do {
+        newIndex = (DateTime.now().microsecondsSinceEpoch % _motivationalMessages.length).toInt();
+      } while (newIndex == _lastMessageIndex && _motivationalMessages.length > 1);
+      
+      _lastMessageIndex = newIndex;
+      _motivationalMessage.value = _motivationalMessages[newIndex];
     }
   }
 
@@ -472,12 +527,22 @@ class _BreathingScreenState extends State<BreathingScreen>
     if (_isDisposed || _animationController == null) return;
     _isPlaying.value = true;
     _updateMotivationalMessage();
-    _animationController!
-        .repeat(); // Use repeat instead of forward for continuous breathing
+    _animationController!.repeat();
 
     if (selectedExercise?.soundUrl != null) {
-      _audioPlayer.play().catchError((e) {
-        debugPrint('Error playing audio: $e');
+      print('Starting audio playback for ${selectedExercise!.name}');
+      _audioPlayer.play().then((_) {
+        print('Audio playback started successfully');
+      }).catchError((e) {
+        print('Error playing audio: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error playing audio: $e'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       });
     }
   }
@@ -486,9 +551,15 @@ class _BreathingScreenState extends State<BreathingScreen>
     if (_isDisposed || _animationController == null) return;
     _isPlaying.value = false;
     _currentPhase.value = 'Complete';
-    _animationController!.stop(); // Stop instead of reset
+    _animationController!.stop();
     _animationController!.reset();
-    _audioPlayer.stop();
+    
+    print('Stopping audio playback');
+    _audioPlayer.stop().then((_) {
+      print('Audio playback stopped successfully');
+    }).catchError((e) {
+      print('Error stopping audio: $e');
+    });
   }
 
   Widget _buildContent() {
@@ -767,14 +838,24 @@ class _BreathingScreenState extends State<BreathingScreen>
                 ),
               ],
             ),
-            child: Text(
-              message,
-              style: TextStyle(
-                fontSize: 15,
-                color: Colors.green[700],
-                fontWeight: FontWeight.w500,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 500),
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: child,
+                );
+              },
+              child: Text(
+                message,
+                key: ValueKey<String>(message),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
             ),
           );
         },

@@ -3,6 +3,8 @@ import 'profile.dart'; // Add this import
 import 'services/supabase_service.dart';
 import 'login.dart'; // For navigation after logout
 // Import for logout navigation
+import 'package:provider/provider.dart';
+import 'providers/theme_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12,12 +14,10 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _hapticFeedback = true;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
@@ -26,7 +26,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Theme.of(context).cardColor,
                   borderRadius: const BorderRadius.vertical(
                     bottom: Radius.circular(30),
                   ),
@@ -43,17 +43,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       'Settings',
-                      style: TextStyle(
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
                       ),
                     ),
                     Text(
                       'Customize your experience',
-                      style: TextStyle(
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontSize: 16,
-                        color: Colors.grey[600],
                       ),
                     ),
                   ],
@@ -86,27 +84,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           },
                         ),
                         _buildSettingsTile(
-                          icon: Icons.notifications_outlined,
-                          title: 'Notifications',
-                          subtitle: 'Configure your notifications',
-                          onTap: () {
-                            showDialog(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: const Text('Notifications'),
-                                content: const Text(
-                                    'Notification settings will be available soon.'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('OK'),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                        _buildSettingsTile(
                           icon: Icons.logout,
                           title: 'Logout',
                           subtitle: 'Sign out of your account',
@@ -130,9 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             .pushAndRemoveUntil(
                                           MaterialPageRoute(
                                             builder: (context) => LoginScreen(
-                                              onSwitch: () {
-                                                // This won't be called as we're coming from logout
-                                              },
+                                              onSwitch: () {},
                                             ),
                                           ),
                                           (route) => false,
@@ -151,61 +126,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                     const SizedBox(height: 25),
                     _buildSettingsSection(
-                      'Breathing Exercise',
-                      [
-                        _buildSettingsTile(
-                          icon: Icons.timer_outlined,
-                          title: 'Session Duration',
-                          subtitle: 'Adjust default session length',
-                          onTap: () {
-                            _showDurationPicker(context);
-                          },
-                        ),
-                        _buildSettingsTile(
-                          icon: Icons.volume_up_outlined,
-                          title: 'Sound Settings',
-                          subtitle: 'Manage breathing sounds',
-                          onTap: () {
-                            _showSoundSettings(context);
-                          },
-                        ),
-                        _buildSettingsTile(
-                          icon: Icons.vibration,
-                          title: 'Haptic Feedback',
-                          subtitle: 'Toggle vibration during exercises',
-                          trailing: Switch(
-                            value: _hapticFeedback,
-                            onChanged: (value) {
-                              setState(() {
-                                _hapticFeedback = value;
-                              });
-                              // TODO: Save preference
-                            },
-                            activeColor: Colors.green[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 25),
-                    _buildSettingsSection(
                       'App Settings',
                       [
-                        _buildSettingsTile(
-                          icon: Icons.color_lens_outlined,
-                          title: 'Theme',
-                          subtitle: 'Change app appearance',
-                          onTap: () {
-                            _showThemeSelector(context);
-                          },
-                        ),
-                        _buildSettingsTile(
-                          icon: Icons.language_outlined,
-                          title: 'Language',
-                          subtitle: 'Select your preferred language',
-                          onTap: () {
-                            _showLanguageSelector(context);
-                          },
-                        ),
                         _buildSettingsTile(
                           icon: Icons.info_outline,
                           title: 'About',
@@ -232,16 +154,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       children: [
         Text(
           title,
-          style: TextStyle(
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontSize: 20,
             fontWeight: FontWeight.bold,
-            color: Colors.grey[800],
           ),
         ),
         const SizedBox(height: 15),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
@@ -274,100 +195,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.green[50],
+          color: Theme.of(context).primaryColor.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(
           icon,
-          color: Colors.green[700],
+          color: Theme.of(context).primaryColor,
           size: 24,
         ),
       ),
       title: Text(
         title,
-        style: const TextStyle(
+        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
           fontSize: 16,
           fontWeight: FontWeight.w500,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
           fontSize: 14,
-          color: Colors.grey[600],
         ),
       ),
       trailing: trailing ??
           Icon(
             Icons.arrow_forward_ios,
             size: 16,
-            color: Colors.grey[400],
+            color: Theme.of(context).textTheme.bodyMedium?.color,
           ),
       onTap: onTap,
-    );
-  }
-
-  void _showDurationPicker(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Session Duration'),
-        content: const Text('This feature will be available soon.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showSoundSettings(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sound Settings'),
-        content: const Text('Sound settings will be available soon.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showThemeSelector(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Theme'),
-        content: const Text('Theme settings will be available soon.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showLanguageSelector(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Language'),
-        content: const Text('Language settings will be available soon.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
     );
   }
 

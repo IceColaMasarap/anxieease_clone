@@ -31,7 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  supabase_flutter: ^2.3.4
+  supabase_flutter: ^2.3.5
   flutter_secure_storage: ^9.0.0
   provider: ^6.1.2
   shared_preferences: ^2.2.2
@@ -74,6 +74,8 @@ flutter:
     - assets/images/
     - assets/audio/
     - assets/audio/478breathing.mp3
+    - assets/audio/boxbreathing.mp3
+    - assets/audio/calmingbreath.mp3
     # - assets/audio/soft_bells.mp3
     # - assets/audio/ocean_waves.mp3
 

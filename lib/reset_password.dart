@@ -135,9 +135,11 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to update password. Please try again.';
+      });
+    } finally {
+      setState(() {
         _isLoading = false;
       });
-      print('Error updating password: $e');
     }
   }
 
@@ -415,7 +417,6 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             MaterialPageRoute(
                               builder: (context) => LoginScreen(
                                 onSwitch: () {},
-                                initialView: 'forgot',
                               ),
                             ),
                             (route) => false,
