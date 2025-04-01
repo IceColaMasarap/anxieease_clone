@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'providers/auth_provider.dart';
 
 class ProfilePage extends StatefulWidget {
   final bool isEditable;
@@ -13,24 +15,32 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isEditing = false;
 
   // Controllers for text fields
-  final _nameController = TextEditingController(text: 'Mejia');
-  final _emailController = TextEditingController(text: 'user@example.com');
-  final _phoneController = TextEditingController(text: '+1 234 567 890');
-  final _locationController = TextEditingController(text: 'New York, USA');
-  final _ageController = TextEditingController(text: '25');
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _ageController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _isEditing = widget.isEditable;
+    _loadUserData();
+  }
+
+  void _loadUserData() {
+    final user = context.read<AuthProvider>().currentUser;
+    if (user != null) {
+      _nameController.text = user.fullName ?? '';
+      _emailController.text = user.email ?? '';
+      if (user.age != null) {
+        _ageController.text = user.age.toString();
+      }
+    }
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
-    _phoneController.dispose();
-    _locationController.dispose();
     _ageController.dispose();
     super.dispose();
   }
@@ -47,15 +57,28 @@ class _ProfilePageState extends State<ProfilePage> {
           if (widget.isEditable)
             IconButton(
               icon: Icon(_isEditing ? Icons.save : Icons.edit),
-              onPressed: () {
+              onPressed: () async {
                 if (_isEditing) {
                   if (_formKey.currentState!.validate()) {
-                    // TODO: Save profile changes
-                    setState(() => _isEditing = false);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Profile updated successfully')),
-                    );
+                    try {
+                      await context.read<AuthProvider>().updateProfile(
+                        fullName: _nameController.text,
+                        age: int.tryParse(_ageController.text),
+                      );
+                      
+                      if (mounted) {
+                        setState(() => _isEditing = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Profile updated successfully')),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error updating profile: ${e.toString()}')),
+                        );
+                      }
+                    }
                   }
                 } else {
                   setState(() => _isEditing = true);
@@ -85,30 +108,19 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ],
                         ),
-                        child: Image.asset(
-                          'assets/images/greenribbon.png',
-                          width: 120,
-                          height: 120,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      if (_isEditing)
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.green[600],
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 20,
+                        child: CircleAvatar(
+                          radius: 60,
+                          backgroundColor: Colors.green[100],
+                          child: Text(
+                            _nameController.text.isNotEmpty ? _nameController.text[0].toUpperCase() : '?',
+                            style: TextStyle(
+                              fontSize: 40,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[700],
                             ),
                           ),
                         ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 32),
@@ -147,11 +159,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           enabled: _isEditing,
                           keyboardType: TextInputType.number,
                           validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your age';
-                            }
-                            if (int.tryParse(value) == null) {
-                              return 'Please enter a valid age';
+                            if (value != null && value.isNotEmpty) {
+                              if (int.tryParse(value) == null) {
+                                return 'Please enter a valid age';
+                              }
                             }
                             return null;
                           },
@@ -161,108 +172,12 @@ class _ProfilePageState extends State<ProfilePage> {
                           icon: Icons.email_outlined,
                           label: 'Email',
                           controller: _emailController,
-                          enabled: _isEditing,
+                          enabled: false,
                           keyboardType: TextInputType.emailAddress,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your email';
-                            }
-                            if (!value.contains('@')) {
-                              return 'Please enter a valid email';
-                            }
-                            return null;
-                          },
-                        ),
-                        const Divider(height: 32),
-                        _buildProfileField(
-                          icon: Icons.phone_outlined,
-                          label: 'Phone',
-                          controller: _phoneController,
-                          enabled: _isEditing,
-                          keyboardType: TextInputType.phone,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your phone number';
-                            }
-                            return null;
-                          },
-                        ),
-                        const Divider(height: 32),
-                        _buildProfileField(
-                          icon: Icons.location_on_outlined,
-                          label: 'Location',
-                          controller: _locationController,
-                          enabled: _isEditing,
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your location';
-                            }
-                            return null;
-                          },
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 32),
-                  if (!_isEditing && widget.isEditable)
-                    ElevatedButton(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: const Text('Change Password'),
-                            content: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildPasswordField(
-                                  label: 'Current Password',
-                                  onChanged: (value) {},
-                                ),
-                                const SizedBox(height: 16),
-                                _buildPasswordField(
-                                  label: 'New Password',
-                                  onChanged: (value) {},
-                                ),
-                                const SizedBox(height: 16),
-                                _buildPasswordField(
-                                  label: 'Confirm New Password',
-                                  onChanged: (value) {},
-                                ),
-                              ],
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Cancel'),
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content:
-                                          Text('Password updated successfully'),
-                                    ),
-                                  );
-                                },
-                                child: const Text('Change Password'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[600],
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 32,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                      ),
-                      child: const Text('Change Password'),
-                    ),
                 ],
               ),
             ),
@@ -276,39 +191,34 @@ class _ProfilePageState extends State<ProfilePage> {
     required IconData icon,
     required String label,
     required TextEditingController controller,
-    required bool enabled,
-    TextInputType? keyboardType,
+    bool enabled = true,
     String? Function(String?)? validator,
+    TextInputType? keyboardType,
   }) {
-    return TextFormField(
-      controller: controller,
-      enabled: enabled,
-      keyboardType: keyboardType,
-      validator: validator,
-      decoration: InputDecoration(
-        icon: Icon(
-          icon,
-          color: Colors.green[700],
-          size: 24,
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.green[50],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: Colors.green[700]),
         ),
-        labelText: label,
-        border: enabled ? const UnderlineInputBorder() : InputBorder.none,
-        errorStyle: const TextStyle(height: 0.75),
-      ),
-    );
-  }
-
-  Widget _buildPasswordField({
-    required String label,
-    required void Function(String) onChanged,
-  }) {
-    return TextField(
-      obscureText: true,
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-      ),
-      onChanged: onChanged,
+        const SizedBox(width: 16),
+        Expanded(
+          child: TextFormField(
+            controller: controller,
+            enabled: enabled,
+            validator: validator,
+            keyboardType: keyboardType,
+            decoration: InputDecoration(
+              labelText: label,
+              border: enabled ? const UnderlineInputBorder() : InputBorder.none,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
