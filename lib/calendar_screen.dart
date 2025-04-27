@@ -188,7 +188,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
     double stressLevel = existingLog?.stressLevel ?? 3.0;
 
-    void _saveLog() {
+    void saveLog() {
       if (_selectedDay != null) {
         final selectedSymptomsList = selectedSymptoms.entries
             .where((entry) => entry.value)
@@ -215,7 +215,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
     }
 
-    void _showSymptomsSelector() {
+    void showSymptomsSelector() {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -266,7 +266,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ),
                     _buildModalFooter(
-                      onNext: _saveLog,
+                      onNext: saveLog,
                       buttonText: existingLog != null ? 'Update Log' : 'Save Log',
                       showDelete: existingLog != null,
                       onDelete: existingLog != null
@@ -282,7 +282,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
 
-    void _showStressLevelSelector() {
+    void showStressLevelSelector() {
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -343,7 +343,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _buildModalFooter(
                       onNext: () {
                         Navigator.pop(context);
-                        _showSymptomsSelector();
+                        showSymptomsSelector();
                       },
                       buttonText: 'Next: Symptoms',
                     ),
@@ -356,7 +356,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
 
-    void _showMoodSelector() {
+    void showMoodSelector() {
       bool showWarning = false;
       
       showModalBottomSheet(
@@ -463,7 +463,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           return;
                         }
                         Navigator.pop(context);
-                        _showStressLevelSelector();
+                        showStressLevelSelector();
                       },
                       buttonText: 'Next: Stress Level',
                     ),
@@ -477,7 +477,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     // Start with the mood selector
-    _showMoodSelector();
+    showMoodSelector();
   }
 
   Widget _buildModalHeader(String title) {
@@ -932,10 +932,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               color: const Color(0xFF007AFF).withOpacity(0.08),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Icons.edit_rounded,
                               size: 16,
-                              color: const Color(0xFF007AFF),
+                              color: Color(0xFF007AFF),
                             ),
                           ),
                         ),
@@ -949,10 +949,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               color: const Color(0xFFFF3B30).withOpacity(0.08),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Icons.delete_outline_rounded,
                               size: 16,
-                              color: const Color(0xFFFF3B30),
+                              color: Color(0xFFFF3B30),
                             ),
                           ),
                         ),

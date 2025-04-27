@@ -2,46 +2,10 @@ import 'package:flutter/material.dart';
 import 'watch.dart';
 import 'profile.dart';
 import 'search.dart';
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'breathing_screen.dart';
 import 'calendar_screen.dart';
-import 'metrics.dart';
-import 'settings.dart';
 
-class Task {
-  final String id;
-  final String title;
-  final DateTime dateTime;
-  bool isCompleted;
-
-  Task({
-    required this.id,
-    required this.title,
-    required this.dateTime,
-    this.isCompleted = false,
-  });
-
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'dateTime': dateTime.toIso8601String(),
-      'isCompleted': isCompleted,
-    };
-  }
-
-  factory Task.fromJson(Map<String, dynamic> json) {
-    return Task(
-      id: json['id'],
-      title: json['title'],
-      dateTime: DateTime.parse(json['dateTime']),
-      isCompleted: json['isCompleted'],
-    );
-  }
-
-  bool get isExpired => DateTime.now().isAfter(dateTime) && !isCompleted;
-}
+// Task class removed
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -75,11 +39,8 @@ class StressLabel extends StatelessWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Task> tasks = [];
-  static const String TASKS_KEY = 'tasks';
   late double screenWidth;
   late double screenHeight;
-  int _selectedIndex = 0;
   final List<String> moods = [
     'Happy',
     'Fearful',
@@ -112,7 +73,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadTasks();
   }
 
   @override
@@ -208,220 +168,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyTasksPlaceholder() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 30),
-      child: Column(
-        children: [
-          Icon(
-            Icons.task_alt,
-            size: 60,
-            color: Colors.grey[300],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No tasks for today',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap the + button to add a new task',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[500],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTaskItem(Task task) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  task.title,
-                  style: TextStyle(
-                    decoration:
-                        task.isCompleted ? TextDecoration.lineThrough : null,
-                    color: task.isCompleted ? Colors.grey : Colors.black87,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _formatDateTime(task.dateTime),
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Row(
-            children: [
-              IconButton(
-                icon: Icon(
-                  task.isCompleted
-                      ? Icons.check_circle
-                      : Icons.check_circle_outline,
-                  color:
-                      task.isCompleted ? Colors.green[700] : Colors.grey[400],
-                ),
-                onPressed: () => _toggleTaskCompletion(task),
-              ),
-              IconButton(
-                icon: Icon(
-                  Icons.delete_outline,
-                  color: Colors.red[300],
-                ),
-                onPressed: () => _removeTask(task),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _loadTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? tasksJson = prefs.getString(TASKS_KEY);
-
-    if (tasksJson != null) {
-      setState(() {
-        final List<dynamic> decodedTasks = jsonDecode(tasksJson);
-        tasks = decodedTasks.map((task) => Task.fromJson(task)).toList();
-      });
-    }
-  }
-
-  Future<void> _saveTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String tasksJson =
-        jsonEncode(tasks.map((task) => task.toJson()).toList());
-    await prefs.setString(TASKS_KEY, tasksJson);
-  }
-
-  void _addTask(Task task) {
-    setState(() {
-      tasks.add(task);
-      _saveTasks();
-    });
-  }
-
-  void _removeTask(Task task) {
-    setState(() {
-      tasks.removeWhere((t) => t.id == task.id);
-      _saveTasks();
-    });
-  }
-
-  void _showDateTimePicker() {
-    showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    ).then((selectedDate) {
-      if (selectedDate != null) {
-        // Show time picker after date is selected
-        showTimePicker(
-          context: context,
-          initialTime: TimeOfDay.now(),
-        ).then((selectedTime) {
-          if (selectedTime != null) {
-            _showAddTaskDialog(selectedDate, selectedTime);
-          }
-        });
-      }
-    });
-  }
-
-  void _showAddTaskDialog(DateTime date, TimeOfDay time) {
-    final TextEditingController taskController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add New Task'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: taskController,
-              decoration: const InputDecoration(
-                labelText: 'Task Description',
-                hintText: 'Enter your task here',
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Date: ${date.day}/${date.month}/${date.year}',
-              style: const TextStyle(fontSize: 14),
-            ),
-            Text(
-              'Time: ${time.format(context)}',
-              style: const TextStyle(fontSize: 14),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (taskController.text.isNotEmpty) {
-                final DateTime taskDateTime = DateTime(
-                  date.year,
-                  date.month,
-                  date.day,
-                  time.hour,
-                  time.minute,
-                );
-
-                _addTask(Task(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  title: taskController.text,
-                  dateTime: taskDateTime,
-                  isCompleted: false,
-                ));
-
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Add Task'),
-          ),
-        ],
-      ),
-    );
-  }
+  // Task-related methods removed
 
   void _showBreathingExercises() {
     Navigator.push(
@@ -712,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 30),
-                  Row(
+                  const Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       StressLabel(label: 'Not at all', range: '0-3'),
@@ -1203,16 +950,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${TimeOfDay.fromDateTime(dateTime).format(context)}';
-  }
-
-  void _toggleTaskCompletion(Task task) {
-    setState(() {
-      task.isCompleted = !task.isCompleted;
-      _saveTasks();
-    });
-  }
+  // Task-related methods removed
 
   // New Notifications Section
   Widget _buildNotificationsSection() {
@@ -1490,8 +1228,8 @@ class _HomeScreenState extends State<HomeScreen> {
       height: 90,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List<Widget>.from(actions.map((action) => 
-          Expanded(
+        children: List<Widget>.from(actions.map(
+          (action) => Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: _buildActionCard(
@@ -1726,7 +1464,8 @@ class HomeContent extends StatelessWidget {
                 // Quick Actions Section
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1758,68 +1497,7 @@ class HomeContent extends StatelessWidget {
                   ),
                 ),
 
-                // Tasks Section
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.all(screenWidth * 0.05),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 3,
-                          height: 20,
-                          decoration: BoxDecoration(
-                            color: Colors.teal[700],
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                        ),
-                        SizedBox(width: screenWidth * 0.02),
-                        Text(
-                          'Today\'s Tasks',
-                          style: TextStyle(
-                            fontSize: screenWidth * 0.045,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF1E2432),
-                          ),
-                        ),
-                        const Spacer(),
-                        TextButton.icon(
-                          onPressed: () => homeState?._showDateTimePicker(),
-                          icon: Icon(Icons.add, size: 20, color: Colors.teal[700]),
-                          label: Text(
-                            'Add Task',
-                            style: TextStyle(color: Colors.teal[700]),
-                          ),
-                          style: TextButton.styleFrom(
-                            backgroundColor: Colors.teal[50],
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Tasks List
-                SliverPadding(
-                  padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
-                  sliver: homeState?.tasks.isEmpty ?? true
-                      ? SliverToBoxAdapter(
-                          child: homeState?._buildEmptyTasksPlaceholder())
-                      : SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: homeState?._buildTaskItem(
-                                  homeState.tasks[index]),
-                            ),
-                            childCount: homeState?.tasks.length ?? 0,
-                          ),
-                        ),
-                ),
+                // Tasks section removed
 
                 // New Notifications Section
                 SliverToBoxAdapter(

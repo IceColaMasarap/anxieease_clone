@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'calendar_screen.dart';
+import 'utils/logger.dart';
 
 class MetricsScreen extends StatefulWidget {
   const MetricsScreen({super.key});
@@ -9,59 +13,325 @@ class MetricsScreen extends StatefulWidget {
 }
 
 class _MetricsScreenState extends State<MetricsScreen> {
-  String selectedPeriod = 'Daily'; // Default selected period
-  final List<String> periods = ['Daily', 'Weekly', 'Monthly'];
+  String selectedPeriod = 'Weekly'; // Default selected period
+  final List<String> periods = ['Weekly', 'Monthly'];
 
-  // Sample data for different time periods
-  final Map<String, List<FlSpot>> heartRateData = {
-    'Daily': [
-      FlSpot(0, 70.0), FlSpot(4, 75.0), FlSpot(8, 82.0),
-      FlSpot(12, 82.0), FlSpot(16, 75.0), FlSpot(20, 70.0),
-    ],
-    'Weekly': [
-      FlSpot(0, 72.0), FlSpot(1, 75.0), FlSpot(2, 80.0),
-      FlSpot(3, 85.0), FlSpot(4, 82.0), FlSpot(5, 78.0),
-      FlSpot(6, 75.0),
-    ],
-    'Monthly': [
-      FlSpot(0, 73.0), FlSpot(5, 75.0), FlSpot(10, 78.0),
-      FlSpot(15, 82.0), FlSpot(20, 80.0), FlSpot(25, 76.0),
-      FlSpot(30, 74.0),
-    ],
+  Map<DateTime, List<DailyLog>> _dailyLogs = {};
+  static const String logsKey = 'daily_logs';
+
+  // Mood categories for grouping similar moods
+  final Map<String, String> moodCategories = {
+    'Happy': 'Positive',
+    'Excited': 'Positive',
+    'Calm': 'Positive',
+    'Relief': 'Positive',
+    'Satisfied': 'Positive',
+    'Fearful': 'Negative',
+    'Angry': 'Negative',
+    'Pain': 'Negative',
+    'Boredom': 'Negative',
+    'Sad': 'Negative',
+    'Confused': 'Negative',
+    'Anxious': 'Negative',
+    'Awe': 'Neutral',
   };
 
-  final Map<String, List<FlSpot>> temperatureData = {
-    'Daily': [
-      FlSpot(0, 36.5), FlSpot(4, 36.7), FlSpot(8, 36.9),
-      FlSpot(12, 36.9), FlSpot(16, 36.7), FlSpot(20, 36.5),
-    ],
-    'Weekly': [
-      FlSpot(0, 36.6), FlSpot(1, 36.7), FlSpot(2, 36.9),
-      FlSpot(3, 37.0), FlSpot(4, 36.8), FlSpot(5, 36.7),
-      FlSpot(6, 36.6),
-    ],
-    'Monthly': [
-      FlSpot(0, 36.5), FlSpot(5, 36.7), FlSpot(10, 36.8),
-      FlSpot(15, 37.0), FlSpot(20, 36.9), FlSpot(25, 36.7),
-      FlSpot(30, 36.6),
-    ],
+  // Data for charts
+  Map<String, List<FlSpot>> moodData = {
+    'Weekly': [],
+    'Monthly': [],
   };
+
+  Map<String, List<FlSpot>> stressData = {
+    'Weekly': [],
+    'Monthly': [],
+  };
+
+  Map<String, List<FlSpot>> symptomsData = {
+    'Weekly': [],
+    'Monthly': [],
+  };
+
+  // Top symptoms and moods
+  List<MapEntry<String, int>> topSymptoms = [];
+  List<MapEntry<String, int>> topMoods = [];
 
   // Labels for different time periods
   final Map<String, List<String>> timeLabels = {
-    'Daily': ['12am', '4am', '8am', '12pm', '4pm', '8pm'],
     'Weekly': ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     'Monthly': ['1', '5', '10', '15', '20', '25', '30'],
   };
 
+  @override
+  void initState() {
+    super.initState();
+    _loadLogs();
+  }
+
+  Future<void> _loadLogs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? logsJson = prefs.getString(logsKey);
+
+      if (logsJson != null) {
+        final Map<String, dynamic> decoded = jsonDecode(logsJson);
+
+        setState(() {
+          _dailyLogs = decoded.map((key, value) {
+            DateTime date = DateTime.parse(key);
+            List<dynamic> logsList = value as List<dynamic>;
+            return MapEntry(
+              _normalizeDate(date),
+              logsList.map((log) => DailyLog.fromJson(log)).toList(),
+            );
+          });
+
+          // Process data for charts
+          _processLogsData();
+        });
+      } else {
+        // If no logs, initialize with sample data
+        _initializeSampleData();
+      }
+    } catch (e) {
+      Logger.error('Error loading logs', e);
+      // Initialize with sample data if there's an error
+      _initializeSampleData();
+    }
+  }
+
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime.utc(date.year, date.month, date.day);
+  }
+
+  void _initializeSampleData() {
+    // Sample data for mood (scale 0-10, where higher is more positive mood)
+    moodData = {
+      'Weekly': [
+        const FlSpot(0, 7.0),
+        const FlSpot(1, 6.0),
+        const FlSpot(2, 8.0),
+        const FlSpot(3, 7.5),
+        const FlSpot(4, 6.5),
+        const FlSpot(5, 8.0),
+        const FlSpot(6, 7.0),
+      ],
+      'Monthly': [
+        const FlSpot(0, 7.0),
+        const FlSpot(5, 6.5),
+        const FlSpot(10, 7.0),
+        const FlSpot(15, 8.0),
+        const FlSpot(20, 7.5),
+        const FlSpot(25, 6.0),
+        const FlSpot(30, 7.0),
+      ],
+    };
+
+    // Sample data for stress levels (scale 0-10)
+    stressData = {
+      'Weekly': [
+        const FlSpot(0, 3.0),
+        const FlSpot(1, 4.0),
+        const FlSpot(2, 2.0),
+        const FlSpot(3, 3.5),
+        const FlSpot(4, 5.0),
+        const FlSpot(5, 2.5),
+        const FlSpot(6, 3.0),
+      ],
+      'Monthly': [
+        const FlSpot(0, 3.0),
+        const FlSpot(5, 4.0),
+        const FlSpot(10, 3.5),
+        const FlSpot(15, 2.0),
+        const FlSpot(20, 3.0),
+        const FlSpot(25, 4.5),
+        const FlSpot(30, 3.0),
+      ],
+    };
+
+    // Sample data for symptom count
+    symptomsData = {
+      'Weekly': [
+        const FlSpot(0, 1.0),
+        const FlSpot(1, 2.0),
+        const FlSpot(2, 0.0),
+        const FlSpot(3, 1.0),
+        const FlSpot(4, 3.0),
+        const FlSpot(5, 1.0),
+        const FlSpot(6, 0.0),
+      ],
+      'Monthly': [
+        const FlSpot(0, 1.0),
+        const FlSpot(5, 2.0),
+        const FlSpot(10, 1.0),
+        const FlSpot(15, 0.0),
+        const FlSpot(20, 1.0),
+        const FlSpot(25, 2.0),
+        const FlSpot(30, 1.0),
+      ],
+    };
+
+    // Sample top symptoms
+    topSymptoms = [
+      const MapEntry('Headache', 5),
+      const MapEntry('Rapid heartbeat', 4),
+      const MapEntry('Fatigue', 3),
+      const MapEntry('Dizziness', 2),
+      const MapEntry('Muscle tension', 1),
+    ];
+
+    // Sample top moods
+    topMoods = [
+      const MapEntry('Anxious', 6),
+      const MapEntry('Happy', 5),
+      const MapEntry('Calm', 4),
+      const MapEntry('Fearful', 3),
+      const MapEntry('Excited', 2),
+    ];
+  }
+
+  void _processLogsData() {
+    // Get dates for weekly and monthly ranges
+    final now = DateTime.now();
+    final weekStart =
+        _normalizeDate(now.subtract(Duration(days: now.weekday - 1)));
+    final monthStart = _normalizeDate(DateTime(now.year, now.month, 1));
+
+    // Maps to count occurrences
+    Map<String, int> symptomCounts = {};
+    Map<String, int> moodCounts = {};
+
+    // Maps to store daily aggregated data
+    Map<DateTime, double> weeklyMoodScores = {};
+    Map<DateTime, double> weeklyStressLevels = {};
+    Map<DateTime, int> weeklySymptomCounts = {};
+
+    Map<int, double> monthlyMoodScores = {};
+    Map<int, double> monthlyStressLevels = {};
+    Map<int, int> monthlySymptomCounts = {};
+
+    // Process all logs
+    _dailyLogs.forEach((date, logs) {
+      // For each day's logs
+      int totalPositiveMoods = 0;
+      int totalNegativeMoods = 0;
+      double totalStress = 0;
+      Set<String> daySymptoms = {};
+
+      for (var log in logs) {
+        // Count symptoms
+        for (var symptom in log.symptoms) {
+          symptomCounts[symptom] = (symptomCounts[symptom] ?? 0) + 1;
+          daySymptoms.add(symptom);
+        }
+
+        // Count moods
+        for (var mood in log.feelings) {
+          moodCounts[mood] = (moodCounts[mood] ?? 0) + 1;
+
+          // Categorize mood
+          if (moodCategories[mood] == 'Positive') {
+            totalPositiveMoods++;
+          } else if (moodCategories[mood] == 'Negative') {
+            totalNegativeMoods++;
+          }
+        }
+
+        // Add stress level
+        totalStress += log.stressLevel;
+      }
+
+      // Calculate mood score (0-10 scale)
+      double moodScore = 5.0; // Neutral default
+      if (totalPositiveMoods > 0 || totalNegativeMoods > 0) {
+        int total = totalPositiveMoods + totalNegativeMoods;
+        // Scale from 0-10 where 10 is all positive, 0 is all negative
+        moodScore = (totalPositiveMoods / total) * 10;
+      }
+
+      // Calculate average stress level
+      double avgStress = logs.isNotEmpty ? totalStress / logs.length : 0;
+
+      // Weekly data
+      if (date.isAfter(weekStart) || date.isAtSameMomentAs(weekStart)) {
+        int weekday = date.weekday - 1; // 0 = Monday, 6 = Sunday
+        if (weekday < 0) weekday = 6; // Adjust for Sunday
+
+        weeklyMoodScores[date] = moodScore;
+        weeklyStressLevels[date] = avgStress;
+        weeklySymptomCounts[date] = daySymptoms.length;
+      }
+
+      // Monthly data
+      if (date.isAfter(monthStart) || date.isAtSameMomentAs(monthStart)) {
+        int day = date.day - 1; // 0-based day of month
+
+        monthlyMoodScores[day] = moodScore;
+        monthlyStressLevels[day] = avgStress;
+        monthlySymptomCounts[day] = daySymptoms.length;
+      }
+    });
+
+    // Convert to FlSpot lists for charts
+    List<FlSpot> weeklyMoodSpots = [];
+    List<FlSpot> weeklyStressSpots = [];
+    List<FlSpot> weeklySymptomSpots = [];
+
+    // Create weekly data points
+    for (int i = 0; i < 7; i++) {
+      DateTime day = weekStart.add(Duration(days: i));
+      weeklyMoodSpots.add(FlSpot(i.toDouble(), weeklyMoodScores[day] ?? 5.0));
+      weeklyStressSpots
+          .add(FlSpot(i.toDouble(), weeklyStressLevels[day] ?? 0.0));
+      weeklySymptomSpots.add(
+          FlSpot(i.toDouble(), weeklySymptomCounts[day]?.toDouble() ?? 0.0));
+    }
+
+    // Create monthly data points
+    List<FlSpot> monthlyMoodSpots = [];
+    List<FlSpot> monthlyStressSpots = [];
+    List<FlSpot> monthlySymptomSpots = [];
+
+    int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    for (int i = 0; i < daysInMonth; i++) {
+      monthlyMoodSpots.add(FlSpot(i.toDouble(), monthlyMoodScores[i] ?? 5.0));
+      monthlyStressSpots
+          .add(FlSpot(i.toDouble(), monthlyStressLevels[i] ?? 0.0));
+      monthlySymptomSpots.add(
+          FlSpot(i.toDouble(), monthlySymptomCounts[i]?.toDouble() ?? 0.0));
+    }
+
+    // Update state with processed data
+    setState(() {
+      moodData = {
+        'Weekly': weeklyMoodSpots,
+        'Monthly': monthlyMoodSpots,
+      };
+
+      stressData = {
+        'Weekly': weeklyStressSpots,
+        'Monthly': monthlyStressSpots,
+      };
+
+      symptomsData = {
+        'Weekly': weeklySymptomSpots,
+        'Monthly': monthlySymptomSpots,
+      };
+
+      // Get top 5 symptoms
+      topSymptoms = symptomCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      if (topSymptoms.length > 5) topSymptoms = topSymptoms.sublist(0, 5);
+
+      // Get top 5 moods
+      topMoods = moodCounts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      if (topMoods.length > 5) topMoods = topMoods.sublist(0, 5);
+    });
+  }
+
   Map<String, dynamic> getChartProperties(String period) {
     switch (period) {
-      case 'Daily':
-        return {
-          'minX': 0.0,
-          'maxX': 22.0,
-          'interval': 4.0,
-        };
       case 'Weekly':
         return {
           'minX': 0.0,
@@ -87,70 +357,62 @@ class _MetricsScreenState extends State<MetricsScreen> {
     final chartProps = getChartProperties(selectedPeriod);
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: const Text(
+          'Wellness Insights',
+          style: TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Color(0xFF6200EE)),
+            onPressed: () {
+              _loadLogs();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Refreshed data')),
+              );
+            },
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // Period selector
             Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Health Metrics',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF2C3E50),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Track your health data',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Time period selector
-            Container(
-              height: 40,
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[200],
-                borderRadius: BorderRadius.circular(20),
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: periods.map((period) {
-                  final isSelected = period == selectedPeriod;
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          selectedPeriod = period;
-                        });
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFF3AA772) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Text(
-                            period,
-                            style: TextStyle(
-                              color: isSelected ? Colors.white : Colors.grey[600],
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                              fontSize: 13,
-                            ),
-                          ),
+                  bool isSelected = selectedPeriod == period;
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        selectedPeriod = period;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF6200EE)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        period,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.grey[600],
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),
                     ),
@@ -159,44 +421,80 @@ class _MetricsScreenState extends State<MetricsScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
-
             // Metrics Cards
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
                   _buildMetricCard(
-                    title: 'Heart Rate',
-                    value: heartRateData[selectedPeriod]!.last.y,
-                    data: heartRateData[selectedPeriod]!,
-                    color: const Color(0xFFFF6B6B),
+                    title: 'Mood Score',
+                    value: moodData[selectedPeriod]!.isNotEmpty
+                        ? moodData[selectedPeriod]!.last.y
+                        : 5.0,
+                    data: moodData[selectedPeriod]!,
+                    color: const Color(0xFF4CAF50), // Green for mood
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
+                      colors: [Color(0xFF4CAF50), Color(0xFF8BC34A)],
                       begin: Alignment.bottomLeft,
                       end: Alignment.topRight,
                     ),
-                    unit: 'bpm',
-                    minY: 60,
-                    maxY: 100,
+                    unit: '/10',
+                    minY: 0,
+                    maxY: 10,
                     chartProps: chartProps,
+                    description: 'Higher score indicates more positive mood',
                   ),
                   const SizedBox(height: 16),
                   _buildMetricCard(
-                    title: 'Temperature',
-                    value: temperatureData[selectedPeriod]!.last.y,
-                    data: temperatureData[selectedPeriod]!,
-                    color: const Color(0xFFFFA726),
+                    title: 'Stress Level',
+                    value: stressData[selectedPeriod]!.isNotEmpty
+                        ? stressData[selectedPeriod]!.last.y
+                        : 0.0,
+                    data: stressData[selectedPeriod]!,
+                    color: const Color(0xFFFF5722), // Orange for stress
                     gradient: const LinearGradient(
-                      colors: [Color(0xFFFFA726), Color(0xFFFFCC80)],
+                      colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
                       begin: Alignment.bottomLeft,
                       end: Alignment.topRight,
                     ),
-                    unit: '°C',
-                    minY: 36,
-                    maxY: 38,
+                    unit: '/10',
+                    minY: 0,
+                    maxY: 10,
                     chartProps: chartProps,
+                    description: 'Higher score indicates more stress',
                   ),
+                  const SizedBox(height: 16),
+                  _buildMetricCard(
+                    title: 'Symptom Count',
+                    value: symptomsData[selectedPeriod]!.isNotEmpty
+                        ? symptomsData[selectedPeriod]!.last.y
+                        : 0.0,
+                    data: symptomsData[selectedPeriod]!,
+                    color: const Color(0xFF2196F3), // Blue for symptoms
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF2196F3), Color(0xFF03A9F4)],
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.topRight,
+                    ),
+                    unit: '',
+                    minY: 0,
+                    maxY: 10,
+                    chartProps: chartProps,
+                    description: 'Number of symptoms reported each day',
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTopItemsCard(
+                    title: 'Top Moods',
+                    items: topMoods,
+                    color: const Color(0xFF4CAF50),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildTopItemsCard(
+                    title: 'Top Symptoms',
+                    items: topSymptoms,
+                    color: const Color(0xFF2196F3),
+                  ),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -216,11 +514,20 @@ class _MetricsScreenState extends State<MetricsScreen> {
     required double minY,
     required double maxY,
     required Map<String, dynamic> chartProps,
+    String? description,
   }) {
     // Calculate statistics
-    double average = data.map((spot) => spot.y).reduce((a, b) => a + b) / data.length;
-    double maxValue = data.map((spot) => spot.y).reduce((a, b) => a > b ? a : b);
-    double minValue = data.map((spot) => spot.y).reduce((a, b) => a < b ? a : b);
+    double average = data.isEmpty
+        ? 0.0
+        : data.map((spot) => spot.y).reduce((a, b) => a + b) / data.length;
+
+    double maxValue = data.isEmpty
+        ? 0.0
+        : data.map((spot) => spot.y).reduce((a, b) => a > b ? a : b);
+
+    double minValue = data.isEmpty
+        ? 0.0
+        : data.map((spot) => spot.y).reduce((a, b) => a < b ? a : b);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -229,7 +536,8 @@ class _MetricsScreenState extends State<MetricsScreen> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.1),
+            color:
+                color.withAlpha(25), // Using withAlpha instead of withOpacity
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -246,119 +554,144 @@ class _MetricsScreenState extends State<MetricsScreen> {
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF2C3E50),
+                  color: Colors.black87,
                 ),
               ),
-              Text(
-                'Avg: ${average.toStringAsFixed(1)} $unit',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: color,
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: gradient,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  '${value.toStringAsFixed(1)}$unit',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ],
           ),
+          if (description != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              description,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           SizedBox(
             height: 180,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: 1,
-                  getDrawingHorizontalLine: (value) {
-                    return FlLine(
-                      color: Colors.grey[200],
-                      strokeWidth: 1,
-                    );
-                  },
-                ),
-                titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 40,
-                      interval: title == 'Temperature' ? 0.5 : 10,
-                      getTitlesWidget: (value, meta) {
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Text(
-                            value.toStringAsFixed(1),
-                            style: TextStyle(
-                              color: Colors.grey[600],
-                              fontSize: 12,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      interval: chartProps['interval'],
-                      getTitlesWidget: (value, meta) {
-                        final index = (value / chartProps['interval']).round();
-                        final labels = timeLabels[selectedPeriod]!;
-                        if (index >= 0 && index < labels.length) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              labels[index],
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                          );
-                        }
-                        return const Text('');
-                      },
-                    ),
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                minX: chartProps['minX'],
-                maxX: chartProps['maxX'],
-                minY: minY,
-                maxY: maxY,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: data,
-                    isCurved: true,
-                    gradient: gradient,
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, barData, index) {
-                        return FlDotCirclePainter(
-                          radius: 4,
-                          color: Colors.white,
-                          strokeWidth: 2,
-                          strokeColor: color,
-                        );
-                      },
-                    ),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        colors: [
-                          color.withOpacity(0.2),
-                          color.withOpacity(0.0),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
+            child: data.isEmpty
+                ? Center(
+                    child: Text(
+                      'No data available for this period',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 14,
                       ),
                     ),
+                  )
+                : LineChart(
+                    LineChartData(
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: title == 'Symptom Count' ? 2 : 1,
+                        getDrawingHorizontalLine: (value) {
+                          return FlLine(
+                            color: Colors.grey[200],
+                            strokeWidth: 1,
+                          );
+                        },
+                      ),
+                      titlesData: FlTitlesData(
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 40,
+                            interval: title == 'Symptom Count' ? 2 : 2,
+                            getTitlesWidget: (value, meta) {
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Text(
+                                  value.toInt().toString(),
+                                  style: TextStyle(
+                                    color: Colors.grey[600],
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 30,
+                            interval: chartProps['interval'],
+                            getTitlesWidget: (value, meta) {
+                              final int index = value.toInt();
+                              if (index >= 0 &&
+                                  index < timeLabels[selectedPeriod]!.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    timeLabels[selectedPeriod]![index],
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      minX: chartProps['minX'],
+                      maxX: chartProps['maxX'],
+                      minY: minY,
+                      maxY: maxY,
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: data,
+                          isCurved: true,
+                          color: color,
+                          barWidth: 3,
+                          isStrokeCapRound: true,
+                          dotData: const FlDotData(show: false),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              colors: [
+                                color.withAlpha(
+                                    51), // Using withAlpha instead of withOpacity
+                                color.withAlpha(0),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
           ),
           const SizedBox(height: 16),
           Row(
@@ -387,7 +720,7 @@ class _MetricsScreenState extends State<MetricsScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          '$value $unit',
+          '$value$unit',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -395,6 +728,99 @@ class _MetricsScreenState extends State<MetricsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildTopItemsCard({
+    required String title,
+    required List<MapEntry<String, int>> items,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color:
+                color.withAlpha(25), // Using withAlpha instead of withOpacity
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 16),
+          items.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16.0),
+                    child: Text(
+                      'No data available',
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                )
+              : Column(
+                  children: items.map((item) {
+                    // Find the maximum count to calculate percentage
+                    final maxCount = items.first.value.toDouble();
+                    final percentage =
+                        maxCount > 0 ? (item.value / maxCount) * 100 : 0.0;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                item.key,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              Text(
+                                '${item.value} times',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          LinearProgressIndicator(
+                            value: percentage / 100,
+                            backgroundColor: Colors.grey[200],
+                            valueColor: AlwaysStoppedAnimation<Color>(color),
+                            minHeight: 8,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+        ],
+      ),
     );
   }
 }

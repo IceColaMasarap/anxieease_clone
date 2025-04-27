@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'home.dart';
 import 'homepage.dart';
 import 'forgotpass.dart';
 import 'providers/auth_provider.dart';
 import 'register.dart';
-import 'services/supabase_service.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback onSwitch;

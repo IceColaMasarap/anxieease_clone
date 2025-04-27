@@ -2,11 +2,12 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    
+
     <application
         android:label="AnxieEase"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,10 +41,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Google Maps API Key - Direct value for maximum compatibility -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="YOUR_API_KEY_HERE"/>
-        <meta-data android:name="flutterEmbedding" android:value="2" />  
+            android:value="AIzaSyCzIImQ-Yw5ZSWLiGq3JDDMLn-dnBeVNMQ"/>
+
+        <!-- Google Maps API Key - Alternative value in case the first one doesn't work -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY.alt"
+            android:value="AIzaSyCzIImQ-Yw5ZSWLiGq3JDDMLn-dnBeVNMQ"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

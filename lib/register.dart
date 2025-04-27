@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'homepage.dart';
 import 'providers/auth_provider.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -297,8 +296,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _buildInputField(TextEditingController controller, String label,
-      {bool obscureText = false}) {
+  Widget _buildInputField(TextEditingController controller, String label) {
     bool isPassword = label.toLowerCase().contains('password');
     return Container(
       decoration: BoxDecoration(

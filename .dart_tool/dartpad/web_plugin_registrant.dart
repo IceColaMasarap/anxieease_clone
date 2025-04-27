@@ -9,7 +9,9 @@
 import 'package:app_links/src/app_links_web.dart';
 import 'package:audio_session/audio_session_web.dart';
 import 'package:flutter_secure_storage_web/flutter_secure_storage_web.dart';
+import 'package:flutter_tts/flutter_tts_web.dart';
 import 'package:geolocator_web/geolocator_web.dart';
+import 'package:google_maps_flutter_web/google_maps_flutter_web.dart';
 import 'package:just_audio_web/just_audio_web.dart';
 import 'package:shared_preferences_web/shared_preferences_web.dart';
 import 'package:url_launcher_web/url_launcher_web.dart';
@@ -20,7 +22,9 @@ void registerPlugins([final Registrar? pluginRegistrar]) {
   AppLinksPluginWeb.registerWith(registrar);
   AudioSessionWeb.registerWith(registrar);
   FlutterSecureStorageWeb.registerWith(registrar);
+  FlutterTtsPlugin.registerWith(registrar);
   GeolocatorPlugin.registerWith(registrar);
+  GoogleMapsPlugin.registerWith(registrar);
   JustAudioPlugin.registerWith(registrar);
   SharedPreferencesPlugin.registerWith(registrar);
   UrlLauncherPlugin.registerWith(registrar);

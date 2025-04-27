@@ -3,8 +3,6 @@ import 'profile.dart'; // Add this import
 import 'services/supabase_service.dart';
 import 'login.dart'; // For navigation after logout
 // Import for logout navigation
-import 'package:provider/provider.dart';
-import 'providers/theme_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -44,15 +42,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       'Settings',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
                     ),
                     Text(
                       'Customize your experience',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 16,
-                      ),
+                            fontSize: 16,
+                          ),
                     ),
                   ],
                 ),
@@ -155,9 +153,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Text(
           title,
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
         ),
         const SizedBox(height: 15),
         Container(
@@ -207,15 +205,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: Text(
         title,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-          fontSize: 16,
-          fontWeight: FontWeight.w500,
-        ),
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
       ),
       subtitle: Text(
         subtitle,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          fontSize: 14,
-        ),
+              fontSize: 14,
+            ),
       ),
       trailing: trailing ??
           Icon(
@@ -232,15 +230,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('About'),
-        content: Column(
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('AnxieEase'),
-            const SizedBox(height: 8),
+            Text('AnxieEase'),
+            SizedBox(height: 8),
             Text('Version: 1.0.0'),
-            const SizedBox(height: 8),
-            const Text('A breathing exercise app to help reduce anxiety.'),
+            SizedBox(height: 8),
+            Text('A breathing exercise app to help reduce anxiety.'),
           ],
         ),
         actions: [

@@ -6,7 +6,7 @@ import 'home.dart';
 import 'metrics.dart';
 import 'settings.dart';
 
-void main() => runApp(MaterialApp(home: HomePage()));
+void main() => runApp(const MaterialApp(home: HomePage()));
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
