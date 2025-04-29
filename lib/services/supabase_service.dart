@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../utils/logger.dart';
 
 class SupabaseService {
   static const String supabaseUrl = 'https://gqsustjxzjzfntcsnvpk.supabase.co';
@@ -154,16 +155,17 @@ class SupabaseService {
         'is_email_verified': response.user?.emailConfirmedAt != null,
       }).eq('id', response.user!.id);
 
-      print(
+      Logger.info(
           'User email verification status: ${response.user?.emailConfirmedAt != null}');
-      print('Updated user record with verification status');
+      Logger.info('Updated user record with verification status');
 
       return response;
     } catch (e) {
       if (e.toString().contains('Invalid login credentials')) {
+        Logger.error('Invalid login credentials', e);
         throw Exception('Invalid email or password');
       }
-      print('Error during sign in: ${e.toString()}');
+      Logger.error('Error during sign in', e);
       rethrow;
     }
   }
@@ -375,6 +377,175 @@ class SupabaseService {
     } catch (e) {
       print('Error updating email verification status: $e');
       throw Exception('Failed to update email verification status');
+    }
+  }
+
+  // Psychologist methods
+  Future<Map<String, dynamic>?> getAssignedPsychologist() async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Return hardcoded psychologist data for demonstration
+      return {
+        'id': 'psy-001',
+        'name': 'Dr. Sarah Johnson',
+        'specialization': 'Clinical Psychologist, Anxiety Specialist',
+        'contact_email': 'sarah.johnson@anxiease.com',
+        'contact_phone': '(555) 123-4567',
+        'biography':
+            'Dr. Sarah Johnson is a licensed clinical psychologist with over 15 years of experience specializing in anxiety disorders, panic attacks, and stress management. She completed her Ph.D. at Stanford University and has published numerous research papers on cognitive behavioral therapy techniques for anxiety management. Dr. Johnson takes a holistic approach to mental health, combining evidence-based therapeutic techniques with mindfulness practices to help patients develop effective coping strategies for their anxiety.',
+        'image_url': null,
+      };
+
+      // Original implementation (commented out)
+      /*
+      // First get the user's assigned psychologist ID
+      final userProfile = await getUserProfile();
+      if (userProfile == null ||
+          userProfile['assigned_psychologist_id'] == null) {
+        return null;
+      }
+
+      final psychologistId = userProfile['assigned_psychologist_id'];
+
+      // Then get the psychologist details
+      final response = await _supabaseClient
+          .from('psychologists')
+          .select()
+          .eq('id', psychologistId)
+          .maybeSingle();
+
+      return response;
+      */
+    } catch (e) {
+      Logger.error('Error fetching assigned psychologist', e);
+      return null;
+    }
+  }
+
+  // Appointment methods
+  Future<List<Map<String, dynamic>>> getAppointments() async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // Return hardcoded appointment data for demonstration
+      final now = DateTime.now();
+
+      return [
+        // Past appointments (only 2)
+        {
+          'id': 'apt-001',
+          'psychologist_id': 'psy-001',
+          'user_id': user.id,
+          'appointment_date': DateTime(now.year, now.month, now.day - 30, 10, 0)
+              .toIso8601String(),
+          'reason': 'Initial consultation and anxiety assessment',
+          'status': 'completed',
+          'created_at':
+              DateTime(now.year, now.month, now.day - 35).toIso8601String(),
+        },
+        {
+          'id': 'apt-002',
+          'psychologist_id': 'psy-001',
+          'user_id': user.id,
+          'appointment_date': DateTime(now.year, now.month, now.day - 7, 11, 0)
+              .toIso8601String(),
+          'reason': 'Discuss progress with breathing exercises',
+          'status': 'cancelled',
+          'created_at':
+              DateTime(now.year, now.month, now.day - 10).toIso8601String(),
+        },
+
+        // Appointment requests with different statuses
+        {
+          'id': 'apt-003',
+          'psychologist_id': 'psy-001',
+          'user_id': user.id,
+          'appointment_date': DateTime(now.year, now.month, now.day + 3, 14, 30)
+              .toIso8601String(),
+          'reason': 'Follow-up session to discuss coping strategies',
+          'status': 'pending',
+          'created_at':
+              DateTime(now.year, now.month, now.day - 1).toIso8601String(),
+        },
+        {
+          'id': 'apt-004',
+          'psychologist_id': 'psy-001',
+          'user_id': user.id,
+          'appointment_date': DateTime(now.year, now.month, now.day + 5, 9, 30)
+              .toIso8601String(),
+          'reason': 'Urgent session to discuss recent panic attack',
+          'status': 'accepted',
+          'created_at':
+              DateTime(now.year, now.month, now.day - 2).toIso8601String(),
+          'response_message':
+              'I can see you on this date. Please arrive 10 minutes early to complete intake forms.',
+        },
+        {
+          'id': 'apt-005',
+          'psychologist_id': 'psy-001',
+          'user_id': user.id,
+          'appointment_date': DateTime(now.year, now.month, now.day + 2, 11, 0)
+              .toIso8601String(),
+          'reason': 'Discussion about sleep issues',
+          'status': 'denied',
+          'created_at':
+              DateTime(now.year, now.month, now.day - 3).toIso8601String(),
+          'response_message':
+              'I\'m unavailable at this time. Please try scheduling for the following week or contact my assistant for urgent matters.',
+        },
+      ];
+
+      // Original implementation (commented out)
+      /*
+      final response = await _supabaseClient
+          .from('appointments')
+          .select()
+          .eq('user_id', user.id)
+          .order('appointment_date', ascending: false);
+
+      return List<Map<String, dynamic>>.from(response);
+      */
+    } catch (e) {
+      Logger.error('Error fetching appointments', e);
+      return [];
+    }
+  }
+
+  Future<String> requestAppointment(
+      Map<String, dynamic> appointmentData) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    try {
+      // For demonstration, just return a success without actually saving to database
+
+      // Log the appointment data for debugging
+      Logger.info('New appointment request: ${appointmentData.toString()}');
+
+      // Return a mock appointment ID
+      return 'apt-${DateTime.now().millisecondsSinceEpoch}';
+
+      // Original implementation (commented out)
+      /*
+      final response = await _supabaseClient.from('appointments').insert({
+        'user_id': user.id,
+        ...appointmentData,
+        'status': 'pending',
+        'created_at': timestamp,
+      }).select();
+
+      if (response.isEmpty) {
+        throw Exception('Failed to create appointment');
+      }
+
+      return response[0]['id'];
+      */
+    } catch (e) {
+      Logger.error('Error requesting appointment', e);
+      throw Exception('Failed to request appointment: ${e.toString()}');
     }
   }
 }

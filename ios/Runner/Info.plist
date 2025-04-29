@@ -68,5 +68,7 @@
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
+		<key>NSUserNotificationsUsageDescription</key>
+		<string>AnxieEase needs to send you notifications about your anxiety levels and breathing exercises.</string>
 	</dict>
 </plist>

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'watch.dart';
-import 'profile.dart';
 import 'search.dart';
 import 'breathing_screen.dart';
 import 'calendar_screen.dart';
+import 'psychologist_profile.dart';
 
 // Task class removed
 
@@ -80,9 +80,9 @@ class _HomeScreenState extends State<HomeScreen> {
     screenWidth = MediaQuery.of(context).size.width;
     screenHeight = MediaQuery.of(context).size.height;
 
-    return const Scaffold(
-      backgroundColor: Color(0xFFF8F9FE),
-      body: HomeContent(),
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: const HomeContent(),
     );
   }
 
@@ -1199,10 +1199,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildQuickActionsGrid() {
     final List<Map<String, dynamic>> actions = [
       {
-        'icon': Icons.person_outline,
-        'title': 'Profile',
+        'icon': Icons.psychology,
+        'title': 'Psychologist',
         'color': const Color(0xFF00634A),
-        'screen': const ProfilePage(),
+        'screen': const PsychologistProfilePage(),
       },
       {
         'icon': Icons.watch_outlined,
@@ -1382,6 +1382,7 @@ class HomeContent extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+    final theme = Theme.of(context);
 
     return SafeArea(
       child: Column(
@@ -1393,7 +1394,7 @@ class HomeContent extends StatelessWidget {
               vertical: screenWidth * 0.03,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: theme.cardColor,
               boxShadow: [
                 BoxShadow(
                   color: Colors.grey.withOpacity(0.05),
@@ -1410,17 +1411,15 @@ class HomeContent extends StatelessWidget {
                   children: [
                     Text(
                       'Hello Mejia',
-                      style: TextStyle(
+                      style: theme.textTheme.titleLarge?.copyWith(
                         fontSize: screenWidth * 0.055,
                         fontWeight: FontWeight.bold,
-                        color: const Color(0xFF1E2432),
                       ),
                     ),
                     Text(
                       'Welcome back',
-                      style: TextStyle(
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         fontSize: screenWidth * 0.035,
-                        color: const Color(0xFF7C8495),
                       ),
                     ),
                   ],
@@ -1430,7 +1429,7 @@ class HomeContent extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.teal.withOpacity(0.1),
+                        color: theme.primaryColor.withOpacity(0.1),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -1438,10 +1437,10 @@ class HomeContent extends StatelessWidget {
                   ),
                   child: CircleAvatar(
                     radius: screenWidth * 0.055,
-                    backgroundColor: Colors.teal[50],
+                    backgroundColor: theme.primaryColor.withOpacity(0.1),
                     child: Icon(
                       Icons.person_outline,
-                      color: Colors.teal[700],
+                      color: theme.primaryColor,
                       size: screenWidth * 0.055,
                     ),
                   ),
@@ -1475,17 +1474,16 @@ class HomeContent extends StatelessWidget {
                               width: 3,
                               height: 20,
                               decoration: BoxDecoration(
-                                color: Colors.teal[700],
+                                color: theme.primaryColor,
                                 borderRadius: BorderRadius.circular(3),
                               ),
                             ),
                             SizedBox(width: screenWidth * 0.02),
                             Text(
                               'Quick Actions',
-                              style: TextStyle(
+                              style: theme.textTheme.titleLarge?.copyWith(
                                 fontSize: screenWidth * 0.045,
                                 fontWeight: FontWeight.bold,
-                                color: const Color(0xFF1E2432),
                               ),
                             ),
                           ],
@@ -1496,8 +1494,6 @@ class HomeContent extends StatelessWidget {
                     ),
                   ),
                 ),
-
-                // Tasks section removed
 
                 // New Notifications Section
                 SliverToBoxAdapter(

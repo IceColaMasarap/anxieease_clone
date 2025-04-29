@@ -3,10 +3,15 @@ import 'package:provider/provider.dart';
 import 'auth.dart';
 import 'providers/theme_provider.dart';
 import 'providers/auth_provider.dart';
+import 'providers/notification_provider.dart';
 import 'services/supabase_service.dart';
+import 'services/notification_service.dart';
+import 'services/storage_service.dart';
 import 'reset_password.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
+import 'splash_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,11 +19,18 @@ void main() async {
   // Initialize Supabase
   await SupabaseService().initialize();
 
+  // Initialize notification service
+  await NotificationService().initialize();
+
+  // Initialize storage service
+  await StorageService().init();
+
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: const MyApp(),
     ),
@@ -200,8 +212,9 @@ class _MyAppState extends State<MyApp> {
         return MaterialApp(
           navigatorKey: _navigatorKey,
           debugShowCheckedModeBanner: false,
-          initialRoute: '/',
+          initialRoute: '/splash',
           routes: {
+            '/splash': (context) => const SplashScreen(),
             '/': (context) => const AuthScreen(),
             '/reset-password': (context) => const ResetPasswordScreen(),
           },
@@ -230,8 +243,8 @@ class _MyAppState extends State<MyApp> {
             }
             return null;
           },
-          theme: themeProvider.themeData,
-          darkTheme: themeProvider.themeData,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
           themeMode:
               themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
         );

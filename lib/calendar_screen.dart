@@ -2,18 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:intl/intl.dart';
 
 class DailyLog {
   final List<String> feelings;
   final double stressLevel;
   final List<String> symptoms;
   final DateTime timestamp;
+  final String? journal;
 
   DailyLog({
     required this.feelings,
     required this.stressLevel,
     required this.symptoms,
     required this.timestamp,
+    this.journal,
   });
 
   Map<String, dynamic> toJson() => {
@@ -21,6 +24,7 @@ class DailyLog {
         'stressLevel': stressLevel,
         'symptoms': symptoms,
         'timestamp': timestamp.toIso8601String(),
+        'journal': journal,
       };
 
   factory DailyLog.fromJson(Map<String, dynamic> json) => DailyLog(
@@ -28,6 +32,7 @@ class DailyLog {
         stressLevel: json['stressLevel'].toDouble(),
         symptoms: List<String>.from(json['symptoms']),
         timestamp: DateTime.parse(json['timestamp']),
+        journal: json['journal'],
       );
 }
 
@@ -46,6 +51,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   static const String LOGS_KEY = 'daily_logs';
 
   final Map<String, bool> symptoms = {
+    'None': false,
+    'Unidentified': false,
     'Rapid heartbeat': false,
     'Shortness of breath': false,
     'Dizziness': false,
@@ -100,7 +107,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   List<String> _getEventsForDay(DateTime day) {
     final logs = _dailyLogs[_normalizeDate(day)];
-    return logs != null ? [''] : [];
+    if (logs == null) return [];
+
+    Set<String> events = {}; // Using Set to avoid duplicates
+    for (var log in logs) {
+      // Add 'log' marker only if there are moods, symptoms or stress level
+      if (log.feelings.isNotEmpty ||
+          log.symptoms.isNotEmpty ||
+          log.stressLevel > 0) {
+        events.add('log');
+      }
+      // Add 'journal' marker if there's a journal entry
+      if (log.journal != null && log.journal!.isNotEmpty) {
+        events.add('journal');
+      }
+    }
+    return events.toList(); // Convert Set back to List
   }
 
   void _deleteLog(DateTime date, int index) {
@@ -134,25 +156,28 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Future<void> _saveDailyLog(DateTime selectedDate, List<String> selectedMoods, double stressLevel, List<String> selectedSymptoms, [DailyLog? existingLog]) async {
+  Future<void> _saveDailyLog(DateTime selectedDate, List<String> selectedMoods,
+      double stressLevel, List<String> selectedSymptoms,
+      [DailyLog? existingLog, String? journal]) async {
     final normalizedDate = _normalizeDate(selectedDate);
-    
+
     setState(() {
       if (!_dailyLogs.containsKey(normalizedDate)) {
         _dailyLogs[normalizedDate] = [];
       }
-      
+
       if (existingLog != null) {
         // Find and update existing log
-        final index = _dailyLogs[normalizedDate]!.indexWhere(
-          (log) => log.timestamp == existingLog.timestamp
-        );
+        final index = _dailyLogs[normalizedDate]!
+            .indexWhere((log) => log.timestamp == existingLog.timestamp);
         if (index != -1) {
           _dailyLogs[normalizedDate]![index] = DailyLog(
             feelings: selectedMoods,
             stressLevel: stressLevel,
             symptoms: selectedSymptoms,
             timestamp: existingLog.timestamp, // Keep original timestamp
+            journal: journal ??
+                existingLog.journal, // Keep existing journal if not updated
           );
         }
       } else {
@@ -162,6 +187,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           stressLevel: stressLevel,
           symptoms: selectedSymptoms,
           timestamp: DateTime.now(),
+          journal: journal,
         ));
       }
     });
@@ -173,20 +199,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (_selectedDay == null) return;
 
     final List<String> moods = [
-      'Happy', 'Fearful', 'Excited', 'Angry', 'Calm',
-      'Pain', 'Boredom', 'Sad', 'Awe', 'Confused',
-      'Anxious', 'Relief', 'Satisfied'
+      'Happy',
+      'Fearful',
+      'Excited',
+      'Angry',
+      'Calm',
+      'Pain',
+      'Boredom',
+      'Sad',
+      'Awe',
+      'Confused',
+      'Anxious',
+      'Relief',
+      'Satisfied'
     ];
-    
+
     Set<String> selectedMoods = Set<String>.from(existingLog?.feelings ?? []);
     Map<String, bool> selectedSymptoms = Map<String, bool>.from(symptoms);
-    
+    double stressLevel = existingLog?.stressLevel ?? 3.0;
+
     if (existingLog != null) {
       for (final symptom in existingLog.symptoms) {
         selectedSymptoms[symptom] = true;
       }
     }
-    double stressLevel = existingLog?.stressLevel ?? 3.0;
 
     void saveLog() {
       if (_selectedDay != null) {
@@ -194,7 +230,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             .where((entry) => entry.value)
             .map((entry) => entry.key)
             .toList();
-        
+
         // Only save if there are selected moods
         if (selectedMoods.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -202,13 +238,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
           );
           return;
         }
-        
+
         _saveDailyLog(
           _selectedDay!,
           selectedMoods.toList(),
           stressLevel,
           selectedSymptomsList,
-          existingLog, // Pass the existing log if we're updating
+          existingLog,
+          existingLog?.journal, // Preserve existing journal if updating
         ).then((_) => Navigator.pop(context));
       } else {
         Navigator.pop(context);
@@ -216,6 +253,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     void showSymptomsSelector() {
+      bool showWarning = false;
+
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -232,31 +271,155 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 child: Column(
                   children: [
                     _buildModalHeader('Select Your Symptoms'),
+                    if (showWarning)
+                      Container(
+                        margin: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 20),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red[50],
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red[100]!),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_amber_rounded,
+                                color: Colors.red[700]),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Please select at least one symptom',
+                                style: TextStyle(color: Colors.red[700]),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     Expanded(
                       child: ListView(
                         padding: const EdgeInsets.all(20),
                         children: selectedSymptoms.entries.map((entry) {
+                          // Special handling for None option
+                          if (entry.key == 'None') {
+                            return Card(
+                              elevation: 0,
+                              margin: const EdgeInsets.only(bottom: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(
+                                  color: entry.value
+                                      ? Colors.teal[700]!
+                                      : Colors.grey[300]!,
+                                ),
+                              ),
+                              child: CheckboxListTile(
+                                title: Text(
+                                  entry.key,
+                                  style: TextStyle(
+                                    color: entry.value
+                                        ? Colors.teal[700]
+                                        : Colors.grey[800],
+                                    fontWeight: entry.value
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                                value: entry.value,
+                                activeColor: Colors.teal[700],
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    // If selecting None, unselect all others
+                                    if (value == true) {
+                                      selectedSymptoms.forEach((key, _) {
+                                        selectedSymptoms[key] = false;
+                                      });
+                                      selectedSymptoms['None'] = true;
+                                    } else {
+                                      selectedSymptoms['None'] = false;
+                                    }
+                                  });
+                                },
+                              ),
+                            );
+                          }
+
+                          // Special handling for Unidentified option
+                          if (entry.key == 'Unidentified') {
+                            return Card(
+                              elevation: 0,
+                              margin: const EdgeInsets.only(bottom: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                side: BorderSide(
+                                  color: entry.value
+                                      ? Colors.teal[700]!
+                                      : Colors.grey[300]!,
+                                ),
+                              ),
+                              child: CheckboxListTile(
+                                title: Text(
+                                  entry.key,
+                                  style: TextStyle(
+                                    color: entry.value
+                                        ? Colors.teal[700]
+                                        : Colors.grey[800],
+                                    fontWeight: entry.value
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                                value: entry.value,
+                                activeColor: Colors.teal[700],
+                                onChanged: (bool? value) {
+                                  setState(() {
+                                    if (value == true) {
+                                      // If selecting Unidentified, can't select with other symptoms
+                                      selectedSymptoms.forEach((key, _) {
+                                        selectedSymptoms[key] = false;
+                                      });
+                                      selectedSymptoms['Unidentified'] = true;
+                                    } else {
+                                      selectedSymptoms['Unidentified'] = false;
+                                    }
+                                  });
+                                },
+                              ),
+                            );
+                          }
+
+                          // Regular symptoms
                           return Card(
                             elevation: 0,
                             margin: const EdgeInsets.only(bottom: 8),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                               side: BorderSide(
-                                color: entry.value ? Colors.teal[700]! : Colors.grey[300]!,
+                                color: entry.value
+                                    ? Colors.teal[700]!
+                                    : Colors.grey[300]!,
                               ),
                             ),
                             child: CheckboxListTile(
                               title: Text(
                                 entry.key,
                                 style: TextStyle(
-                                  color: entry.value ? Colors.teal[700] : Colors.grey[800],
-                                  fontWeight: entry.value ? FontWeight.w600 : FontWeight.normal,
+                                  color: entry.value
+                                      ? Colors.teal[700]
+                                      : Colors.grey[800],
+                                  fontWeight: entry.value
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
                                 ),
                               ),
                               value: entry.value,
                               activeColor: Colors.teal[700],
                               onChanged: (bool? value) {
                                 setState(() {
+                                  if (value == true) {
+                                    // If selecting a regular symptom, unselect None and Unidentified
+                                    selectedSymptoms['None'] = false;
+                                    selectedSymptoms['Unidentified'] = false;
+                                  }
                                   selectedSymptoms[entry.key] = value ?? false;
                                 });
                               },
@@ -266,8 +429,20 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ),
                     _buildModalFooter(
-                      onNext: saveLog,
-                      buttonText: existingLog != null ? 'Update Log' : 'Save Log',
+                      onNext: () {
+                        // Check if at least one symptom is selected
+                        bool hasSelectedSymptom =
+                            selectedSymptoms.values.any((value) => value);
+                        if (!hasSelectedSymptom) {
+                          setState(() {
+                            showWarning = true;
+                          });
+                          return;
+                        }
+                        saveLog();
+                      },
+                      buttonText:
+                          existingLog != null ? 'Update Log' : 'Save Log',
                       showDelete: existingLog != null,
                       onDelete: existingLog != null
                           ? () => _deleteLog(_selectedDay!, 0)
@@ -358,7 +533,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     void showMoodSelector() {
       bool showWarning = false;
-      
+
       showModalBottomSheet(
         context: context,
         isScrollControlled: true,
@@ -377,7 +552,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _buildModalHeader('Select Your Moods'),
                     if (showWarning)
                       Container(
-                        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 20),
+                        margin: const EdgeInsets.symmetric(
+                            vertical: 8, horizontal: 20),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: Colors.red[50],
@@ -386,7 +562,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(Icons.warning_amber_rounded, color: Colors.red[700]),
+                            Icon(Icons.warning_amber_rounded,
+                                color: Colors.red[700]),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
@@ -400,7 +577,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     const SizedBox(height: 20),
                     Expanded(
                       child: GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3,
                           crossAxisSpacing: 10,
                           mainAxisSpacing: 10,
@@ -425,10 +603,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             },
                             child: Container(
                               decoration: BoxDecoration(
-                                color: isSelected ? const Color(0xFF3AA772) : Colors.white,
+                                color: isSelected
+                                    ? const Color(0xFF3AA772)
+                                    : Colors.white,
                                 borderRadius: BorderRadius.circular(15),
                                 border: Border.all(
-                                  color: isSelected ? const Color(0xFF3AA772) : Colors.grey.shade300,
+                                  color: isSelected
+                                      ? const Color(0xFF3AA772)
+                                      : Colors.grey.shade300,
                                 ),
                               ),
                               child: Column(
@@ -436,14 +618,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 children: [
                                   Icon(
                                     _getMoodIcon(mood),
-                                    color: isSelected ? Colors.white : Colors.grey.shade600,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.grey.shade600,
                                   ),
                                   const SizedBox(height: 5),
                                   Text(
                                     mood,
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
-                                      color: isSelected ? Colors.white : Colors.grey.shade600,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : Colors.grey.shade600,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -623,7 +809,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         backgroundColor: const Color(0xFFF2F2F7),
         elevation: 0,
         title: const Text(
-          'Journal',
+          'Calendar Logs',
           style: TextStyle(
             color: Color(0xFF000000),
             fontSize: 17,
@@ -634,9 +820,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         actions: [
           IconButton(
             icon: Icon(
-              _calendarFormat == CalendarFormat.month 
-                ? Icons.view_week_rounded
-                : Icons.calendar_view_month_rounded,
+              _calendarFormat == CalendarFormat.month
+                  ? Icons.view_week_rounded
+                  : Icons.calendar_view_month_rounded,
               color: const Color(0xFF007AFF),
               size: 22,
             ),
@@ -690,31 +876,45 @@ class _CalendarScreenState extends State<CalendarScreen> {
               },
               eventLoader: _getEventsForDay,
               calendarStyle: CalendarStyle(
-                markerDecoration: const BoxDecoration(
-                  color: Color(0xFF007AFF),
+                markerDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
                   shape: BoxShape.circle,
                 ),
-                selectedDecoration: const BoxDecoration(
-                  color: Color(0xFF007AFF),
-                  shape: BoxShape.circle,
-                ),
-                todayDecoration: BoxDecoration(
-                  color: const Color(0xFF007AFF).withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                weekendTextStyle: const TextStyle(color: Color(0xFFFF3B30)),
-                outsideDaysVisible: false,
-                defaultTextStyle: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
-                  letterSpacing: -0.5,
-                ),
-                selectedTextStyle: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.5,
-                ),
+                markerSize: 8,
+                markersMaxCount: 2,
+                markerMargin: const EdgeInsets.symmetric(horizontal: 1),
+              ),
+              calendarBuilders: CalendarBuilders(
+                markerBuilder: (context, date, events) {
+                  if (events.isEmpty) return null;
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: events.map((event) {
+                      if (event == 'log') {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        );
+                      } else if (event == 'journal') {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 1),
+                          child: Icon(
+                            Icons.edit,
+                            size: 12,
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        );
+                      }
+                      return Container();
+                    }).toList(),
+                  );
+                },
               ),
               headerStyle: const HeaderStyle(
                 formatButtonVisible: false,
@@ -725,8 +925,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: Color(0xFF000000),
                   letterSpacing: -0.5,
                 ),
-                leftChevronIcon: Icon(Icons.chevron_left_rounded, color: Color(0xFF007AFF), size: 28),
-                rightChevronIcon: Icon(Icons.chevron_right_rounded, color: Color(0xFF007AFF), size: 28),
+                leftChevronIcon: Icon(Icons.chevron_left_rounded,
+                    color: Color(0xFF007AFF), size: 28),
+                rightChevronIcon: Icon(Icons.chevron_right_rounded,
+                    color: Color(0xFF007AFF), size: 28),
                 headerPadding: EdgeInsets.symmetric(vertical: 12),
               ),
             ),
@@ -754,30 +956,67 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ],
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          if (_selectedDay == null) {
-            setState(() {
-              _selectedDay = DateTime.now();
-              _focusedDay = DateTime.now();
-            });
-          }
-          _showFeelingsDialog();
-        },
-        backgroundColor: const Color(0xFF007AFF),
-        elevation: 0,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(16)),
-        ),
-        child: const Icon(Icons.add_rounded, size: 28),
+      floatingActionButton: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Journal Button
+          FloatingActionButton(
+            onPressed: () {
+              if (_selectedDay == null) {
+                setState(() {
+                  _selectedDay = DateTime.now();
+                  _focusedDay = DateTime.now();
+                });
+              }
+              _showJournalDialog();
+            },
+            backgroundColor: Colors.purple,
+            heroTag: 'journalBtn',
+            elevation: 0,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            child: const Icon(Icons.edit_note_rounded, size: 28),
+          ),
+          const SizedBox(width: 16),
+          // Log Entry Button
+          FloatingActionButton(
+            onPressed: () {
+              if (_selectedDay == null) {
+                setState(() {
+                  _selectedDay = DateTime.now();
+                  _focusedDay = DateTime.now();
+                });
+              }
+              _showFeelingsDialog();
+            },
+            backgroundColor: const Color(0xFF007AFF),
+            heroTag: 'logBtn',
+            elevation: 0,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            child: const Icon(Icons.add_rounded, size: 28),
+          ),
+        ],
       ),
     );
   }
 
   String _getMonthName(int month) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
     ];
     return months[month - 1];
   }
@@ -809,248 +1048,712 @@ class _CalendarScreenState extends State<CalendarScreen> {
       );
     }
 
-    return ListView.builder(
-      itemCount: logs.length,
+    // Filter logs based on their type
+    final moodLogs = logs
+        .where((log) =>
+            log.feelings.isNotEmpty ||
+            log.symptoms.isNotEmpty ||
+            log.stressLevel > 0)
+        .toList();
+    final journalLogs = logs
+        .where((log) =>
+            log.journal != null &&
+            log.journal!.isNotEmpty &&
+            log.feelings.isEmpty &&
+            log.symptoms.isEmpty &&
+            log.stressLevel == 0)
+        .toList();
+
+    return ListView(
+      itemExtent: null,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      itemBuilder: (context, index) {
-        final log = logs[index];
-        final timeStr = '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}';
-        
-        Color getStressColor(double level) {
-          if (level <= 3) {
-            return const Color(0xFF34C759); // Low stress
-          } else if (level <= 7) {
-            return const Color(0xFFFF9500); // Medium stress
-          } else {
-            return const Color(0xFFFF3B30); // High stress
-          }
-        }
+      children: [
+        ...moodLogs.map((log) => _buildLogCard(log, date, logs.indexOf(log))),
+        ...journalLogs
+            .map((log) => _buildJournalOnlyCard(log, date, logs.indexOf(log))),
+      ],
+    );
+  }
 
-        final stressColor = getStressColor(log.stressLevel);
+  Widget _buildLogCard(DailyLog log, DateTime date, int index) {
+    final timeStr =
+        '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}';
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.grey[200]!,
-              width: 1,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+    Color getStressColor(double level) {
+      if (level <= 3) {
+        return const Color(0xFF34C759); // Low stress
+      } else if (level <= 7) {
+        return const Color(0xFFFF9500); // Medium stress
+      } else {
+        return const Color(0xFFFF3B30); // High stress
+      }
+    }
+
+    final stressColor = getStressColor(log.stressLevel);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.grey[200]!,
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Time',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          timeStr,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1A1A1A),
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                      ],
+                    Text(
+                      'Time',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        letterSpacing: -0.3,
+                      ),
                     ),
-                    const SizedBox(width: 16),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Stress Level',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                    const SizedBox(height: 4),
+                    Text(
+                      timeStr,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF1A1A1A),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Stress Level',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: stressColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            log.stressLevel <= 3
+                                ? Icons.sentiment_satisfied_rounded
+                                : log.stressLevel <= 7
+                                    ? Icons.sentiment_neutral_rounded
+                                    : Icons.sentiment_dissatisfied_rounded,
+                            size: 14,
+                            color: stressColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${log.stressLevel.toInt()}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: stressColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                // Edit Button
+                GestureDetector(
+                  onTap: () => _showFeelingsDialog(log),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF007AFF).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      size: 16,
+                      color: Color(0xFF007AFF),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Delete Button
+                GestureDetector(
+                  onTap: () => _deleteLog(date, index),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF3B30).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 16,
+                      color: Color(0xFFFF3B30),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (log.feelings.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Feelings',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: log.feelings.map((feeling) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF007AFF).withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          feeling,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF007AFF),
                             letterSpacing: -0.3,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: stressColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          if (log.symptoms.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Symptoms',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: log.symptoms.map((symptom) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF3B30).withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          symptom,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFFFF3B30),
+                            letterSpacing: -0.3,
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                log.stressLevel <= 3 
-                                    ? Icons.sentiment_satisfied_rounded
-                                    : log.stressLevel <= 7
-                                        ? Icons.sentiment_neutral_rounded
-                                        : Icons.sentiment_dissatisfied_rounded,
-                                size: 14,
-                                color: stressColor,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJournalOnlyCard(DailyLog log, DateTime date, int index) {
+    final timeStr =
+        '${log.timestamp.hour.toString().padLeft(2, '0')}:${log.timestamp.minute.toString().padLeft(2, '0')}';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.purple.withOpacity(0.3),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Journal Entry',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.purple[700],
+                        letterSpacing: -0.3,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      timeStr,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF1A1A1A),
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                // Edit Button
+                GestureDetector(
+                  onTap: () => _addJournalToExistingLog(log),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.edit_rounded,
+                      size: 16,
+                      color: Colors.purple,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Delete Button
+                GestureDetector(
+                  onTap: () => _deleteLog(date, index),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF3B30).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 16,
+                      color: Color(0xFFFF3B30),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (log.journal != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.purple.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.purple.withOpacity(0.1),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  log.journal!,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Colors.black87,
+                    height: 1.5,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Add a method to add or edit journal entries for existing logs
+  void _addJournalToExistingLog(DailyLog log) {
+    TextEditingController journalController =
+        TextEditingController(text: log.journal);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.8,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: Column(
+                  children: [
+                    _buildModalHeader('Update Your Journal'),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'How are you feeling today?',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[800],
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${log.stressLevel.toInt()}',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: stressColor,
+                            ),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: journalController,
+                                maxLines: null,
+                                expands: true,
+                                textAlignVertical: TextAlignVertical.top,
+                                decoration: InputDecoration(
+                                  hintText: 'Write your thoughts here...',
+                                  hintStyle: TextStyle(color: Colors.grey[400]),
+                                  filled: true,
+                                  fillColor: Colors.grey[50],
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide:
+                                        BorderSide(color: Colors.grey[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide:
+                                        BorderSide(color: Colors.grey[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide:
+                                        BorderSide(color: Colors.purple),
+                                  ),
+                                  contentPadding: const EdgeInsets.all(16),
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black87,
+                                  height: 1.5,
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                    const Spacer(),
-                    // Actions Row
-                    Row(
-                      children: [
-                        // Edit Button
-                        GestureDetector(
-                          onTap: () => _showFeelingsDialog(log),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF007AFF).withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.edit_rounded,
-                              size: 16,
-                              color: Color(0xFF007AFF),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                _updateJournal(log, journalController.text);
+                                Navigator.pop(context);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                'Save Journal',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Delete Button
-                        GestureDetector(
-                          onTap: () => _deleteLog(date, index),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFF3B30).withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(
-                              Icons.delete_outline_rounded,
-                              size: 16,
-                              color: Color(0xFFFF3B30),
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
-
-              if (log.feelings.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Feelings',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: log.feelings.map((feeling) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF007AFF).withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              feeling,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF007AFF),
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                ),
-
-              if (log.symptoms.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Symptoms',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: log.symptoms.map((symptom) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFF3B30).withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              symptom,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFFFF3B30),
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
-} 
+
+  void _updateJournal(DailyLog log, String journalText) {
+    final normalizedDate = _normalizeDate(log.timestamp);
+    final index = _dailyLogs[normalizedDate]!
+        .indexWhere((l) => l.timestamp == log.timestamp);
+
+    if (index != -1) {
+      setState(() {
+        _dailyLogs[normalizedDate]![index] = DailyLog(
+          feelings: log.feelings,
+          stressLevel: log.stressLevel,
+          symptoms: log.symptoms,
+          timestamp: log.timestamp,
+          journal: journalText.isEmpty ? null : journalText,
+        );
+      });
+      _saveLogs();
+    }
+  }
+
+  // New method for the standalone journal entry
+  void _showJournalDialog() {
+    if (_selectedDay == null) return;
+
+    TextEditingController journalController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.8,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: Column(
+                  children: [
+                    _buildModalHeader('Write in Your Journal'),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_today_rounded,
+                                  size: 18,
+                                  color: Colors.purple.shade700,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${_selectedDay!.day} ${_getMonthName(_selectedDay!.month)} ${_selectedDay!.year}',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.purple.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'What\'s on your mind today?',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: journalController,
+                                maxLines: null,
+                                expands: true,
+                                textAlignVertical: TextAlignVertical.top,
+                                decoration: InputDecoration(
+                                  hintText: 'Write your thoughts here...',
+                                  hintStyle: TextStyle(color: Colors.grey[400]),
+                                  filled: true,
+                                  fillColor: Colors.grey[50],
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide:
+                                        BorderSide(color: Colors.grey[200]!),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide:
+                                        BorderSide(color: Colors.grey[200]!),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                        color: Colors.purple.shade700),
+                                  ),
+                                  contentPadding: const EdgeInsets.all(16),
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.black87,
+                                  height: 1.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                _saveJournalEntry(journalController.text);
+                                Navigator.pop(context);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple.shade700,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Text(
+                                'Save Journal Entry',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // Method to save a standalone journal entry
+  Future<void> _saveJournalEntry(String journalText) async {
+    if (journalText.isEmpty) return;
+
+    final normalizedDate = _normalizeDate(_selectedDay!);
+
+    setState(() {
+      if (!_dailyLogs.containsKey(normalizedDate)) {
+        _dailyLogs[normalizedDate] = [];
+      }
+
+      // Create a journal-only entry
+      _dailyLogs[normalizedDate]!.add(DailyLog(
+        feelings: [], // Empty list for feelings
+        stressLevel: 0, // Default stress level
+        symptoms: [], // Empty list for symptoms
+        timestamp: DateTime.now(),
+        journal: journalText,
+      ));
+    });
+
+    await _saveLogs();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Journal entry saved successfully'),
+        backgroundColor: Colors.purple,
+      ),
+    );
+  }
+}

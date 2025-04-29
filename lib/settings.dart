@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
-import 'profile.dart'; // Add this import
+import 'package:provider/provider.dart';
+import 'profile.dart';
 import 'services/supabase_service.dart';
+import 'providers/notification_provider.dart';
+import 'providers/theme_provider.dart';
+import 'utils/settings_helper.dart';
 import 'login.dart'; // For navigation after logout
 // Import for logout navigation
 
@@ -126,6 +130,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _buildSettingsSection(
                       'App Settings',
                       [
+                        Consumer<ThemeProvider>(
+                          builder: (context, themeProvider, child) {
+                            return _buildSettingsTile(
+                              icon: themeProvider.isDarkMode
+                                  ? Icons.dark_mode
+                                  : Icons.light_mode,
+                              title: 'Dark Mode',
+                              subtitle: themeProvider.isDarkMode
+                                  ? 'Dark theme is enabled'
+                                  : 'Light theme is enabled',
+                              trailing: Switch(
+                                value: themeProvider.isDarkMode,
+                                onChanged: (value) =>
+                                    themeProvider.toggleTheme(),
+                              ),
+                            );
+                          },
+                        ),
+                        Consumer<NotificationProvider>(
+                          builder: (context, notificationProvider, child) {
+                            return _buildSettingsTile(
+                              icon: Icons.notifications_outlined,
+                              title: 'Notifications',
+                              subtitle:
+                                  notificationProvider.isNotificationEnabled
+                                      ? 'Notifications are enabled'
+                                      : 'Notifications are disabled',
+                              trailing: Switch(
+                                value:
+                                    notificationProvider.isNotificationEnabled,
+                                onChanged: (value) async {
+                                  if (value) {
+                                    // Try to enable notifications
+                                    final granted = await notificationProvider
+                                        .requestNotificationPermissions();
+                                    if (!granted) {
+                                      // If permission denied, show settings dialog
+                                      if (context.mounted) {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text(
+                                                'Enable Notifications'),
+                                            content: const Text(
+                                                'To receive notifications, please enable them in your device settings.'),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                child: const Text('Cancel'),
+                                              ),
+                                              TextButton(
+                                                onPressed: () {
+                                                  Navigator.pop(context);
+                                                  SettingsHelper
+                                                      .openNotificationSettings();
+                                                },
+                                                child:
+                                                    const Text('Open Settings'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  } else {
+                                    // Inform user they need to disable in system settings
+                                    if (context.mounted) {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: const Text(
+                                              'Disable Notifications'),
+                                          content: const Text(
+                                              'To disable notifications, you need to turn them off in your device settings.'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () {
+                                                Navigator.pop(context);
+                                                SettingsHelper
+                                                    .openNotificationSettings();
+                                              },
+                                              child:
+                                                  const Text('Open Settings'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    }
+                                  }
+
+                                  // Refresh status after returning from settings
+                                  await notificationProvider
+                                      .refreshNotificationStatus();
+                                },
+                                activeColor: const Color(0xFF2D9254),
+                              ),
+                              onTap: () {},
+                            );
+                          },
+                        ),
                         _buildSettingsTile(
                           icon: Icons.info_outline,
                           title: 'About',

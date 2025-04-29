@@ -10,15 +10,17 @@ class BreathingScreen extends StatefulWidget {
 }
 
 class _BreathingScreenState extends State<BreathingScreen>
-    with SingleTickerProviderStateMixin {
-  late final AudioPlayer _audioPlayer;
+    with TickerProviderStateMixin {
+  AudioPlayer? _audioPlayer;
   AnimationController? _animationController;
-  final ValueNotifier<String> _currentPhase =
-      ValueNotifier<String>('Get Ready');
-  final ValueNotifier<bool> _isPlaying = ValueNotifier<bool>(false);
+  String _currentPhase = 'Inhale';
+  bool _isPlaying = false;
+  bool _isPaused = false;
   final ValueNotifier<String> _motivationalMessage = ValueNotifier<String>('');
   bool _isDisposed = false;
   BreathingExercise? selectedExercise;
+  int? _selectedDuration; // in minutes
+  bool _showDurationSelection = false;
 
   final List<String> _motivationalMessages = [
     "You're doing great, keep breathing",
@@ -31,49 +33,41 @@ class _BreathingScreenState extends State<BreathingScreen>
     "Trust in your inner strength",
     "You're safe and in control",
     "This feeling will pass",
-    
     "Focus on your breath, nothing else matters",
     "Notice the rhythm of your breathing",
     "Be here, in this peaceful moment",
     "Your breath is your anchor",
-    
     "Feel the tension leaving your body",
     "With each breath, you become more relaxed",
     "Your body knows how to find peace",
     "Embrace the feeling of calmness",
-    
     "You have the power to calm your mind",
     "You're building inner strength",
     "Every breath makes you stronger",
     "You're taking care of yourself",
-    
     "You're doing something positive for yourself",
     "Keep going, you're doing well",
     "This is your time for peace",
     "You deserve this moment of calm",
-    
     "Anxiety cannot control you",
     "You are bigger than your worries",
     "Your breath is your safe space",
     "Peace is within your reach",
-    
     "Feel your feet on the ground",
     "Notice the rise and fall of your chest",
     "Your breath connects mind and body",
     "You are grounded and secure",
-    
     "Be gentle with yourself",
     "You're worth this moment of peace",
     "Accept yourself as you are",
     "You're taking positive steps",
-    
     "This is your moment of peace",
     "Right here, right now, you're okay",
     "Each breath is a fresh start",
     "Find peace in this moment",
   ];
 
-  int _lastMessageIndex = -1;
+  final int _lastMessageIndex = -1;
 
   @override
   void initState() {
@@ -82,215 +76,487 @@ class _BreathingScreenState extends State<BreathingScreen>
   }
 
   @override
+  void dispose() {
+    _isDisposed = true;
+    _motivationalMessage.dispose();
+    _animationController?.dispose();
+    _audioPlayer?.stop();
+    _audioPlayer?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (selectedExercise == null) {
-      return Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          selectedExercise == null
+              ? 'Breathing Exercises'
+              : selectedExercise!.name,
+          style: const TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.green.shade500,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+          onPressed: () {
+            _stopExercise();
+            if (selectedExercise != null) {
+              setState(() {
+                selectedExercise = null;
+                _selectedDuration = null;
+                _showDurationSelection = false;
+              });
+            } else {
+              Navigator.pop(context);
+            }
+          },
+        ),
+      ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.green.shade400,
+              Colors.green.shade50,
+            ],
           ),
-          title: const Text(
-            'Breathing Exercises',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 24,
+        ),
+        child: selectedExercise == null
+            ? _buildTechniqueSelection()
+            : _showDurationSelection
+                ? _buildDurationSelection()
+                : _buildExerciseScreen(),
+      ),
+    );
+  }
+
+  Widget _buildTechniqueSelection() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
+          decoration: BoxDecoration(
+            color: Colors.green.shade500,
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(30),
+              bottomRight: Radius.circular(30),
             ),
           ),
-          backgroundColor: Colors.green.shade500,
-          elevation: 0,
+          child: const Text(
+            'Choose a breathing technique to help reduce anxiety and find your inner peace',
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.white,
+              height: 1.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
         ),
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.green.shade500,
-                Colors.green.shade50,
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(20),
+            itemCount: BreathingExercise.anxietyExercises.length,
+            itemBuilder: (context, index) {
+              final exercise = BreathingExercise.anxietyExercises[index];
+              return _buildBreathingExerciseCard(exercise);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDurationSelection() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text(
+          'Select Session Length',
+          style: TextStyle(
+              fontSize: 28, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        const SizedBox(height: 40),
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildDurationButton(1),
+                const SizedBox(width: 20),
+                _buildDurationButton(3),
               ],
             ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildDurationButton(5),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildDurationButton(10),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 40),
+        TextButton(
+          onPressed: () {
+            setState(() {
+              selectedExercise = null;
+              _selectedDuration = null;
+              _showDurationSelection = false;
+            });
+          },
+          style: TextButton.styleFrom(
+            foregroundColor: Colors.red.shade400,
+          ),
+          child: const Text(
+            'Cancel',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDurationButton(int minutes) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 5,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              _selectedDuration = minutes;
+            });
+            _showTemporaryHeadphoneReminder();
+          },
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            width: 100,
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            child: Text(
+              '$minutes min',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                color: Colors.green.shade700,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTemporaryHeadphoneReminder() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.headphones,
+                size: 60,
+                color: Colors.green.shade600,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Best Experience with Headphones',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'For optimal relaxation, we recommend using headphones',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    // Auto-dismiss after 1.5 seconds
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (!_isDisposed && Navigator.of(context, rootNavigator: true).canPop()) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _startSession();
+      }
+    });
+  }
+
+  void _startSession() {
+    setState(() {
+      _showDurationSelection = false;
+    });
+    _setupAudio();
+  }
+
+  Widget _buildExerciseScreen() {
+    return Column(
+      children: [
+        Container(
+          margin: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                spreadRadius: 1,
+              ),
+            ],
           ),
           child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade500,
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(30),
-                    bottomRight: Radius.circular(30),
-                  ),
-                ),
-                child: const Text(
-                  'Choose a breathing technique to help reduce anxiety and find your inner peace',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white,
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
+              Text(
+                selectedExercise?.description ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  color: Colors.black87,
                 ),
               ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                  itemCount: BreathingExercise.anxietyExercises.length,
-                  itemBuilder: (context, index) {
-                    final exercise = BreathingExercise.anxietyExercises[index];
-                    return Hero(
-                      tag: 'exercise_${exercise.name}',
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 20),
-                        child: Material(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          elevation: 4,
-                          child: InkWell(
-                            onTap: () {
-                              setState(() {
-                                selectedExercise = exercise;
-                              });
-                              _initializeExercise();
-                            },
-                            borderRadius: BorderRadius.circular(20),
-                            child: Container(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              Colors.green.shade300,
-                                              Colors.green.shade500,
-                                            ],
-                                            begin: Alignment.topLeft,
-                                            end: Alignment.bottomRight,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius.circular(15),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.green.shade200,
-                                              blurRadius: 8,
-                                              offset: const Offset(0, 4),
-                                            ),
-                                          ],
-                                        ),
-                                        child: const Icon(
-                                          Icons.air,
-                                          color: Colors.white,
-                                          size: 30,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              exercise.name,
-                                              style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold,
-                                                color: Colors.black87,
-                                              ),
-                                            ),
-                                            const SizedBox(height: 6),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 10,
-                                                vertical: 4,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.green.shade50,
-                                                borderRadius:
-                                                    BorderRadius.circular(20),
-                                              ),
-                                              child: Text(
-                                                '${_calculateTotalDuration(exercise)}s per cycle',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  color: Colors.green.shade700,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Container(
-                                    padding: const EdgeInsets.all(15),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey.shade50,
-                                      borderRadius: BorderRadius.circular(15),
-                                    ),
-                                    child: Text(
-                                      exercise.description,
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        color: Colors.grey.shade700,
-                                        height: 1.4,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  _buildBreathingPattern(exercise),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
+              const Divider(height: 20),
+              Text(
+                selectedExercise?.technique ?? '',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
                 ),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    return WillPopScope(
-      onWillPop: () async {
-        if (_isPlaying.value) {
-          _stopExercise();
-        }
-        Navigator.of(context).pop();
-        return false;
-      },
-      child: Scaffold(
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.green.shade200,
-                Colors.green.shade50,
-              ],
-            ),
+        Expanded(
+          child: Center(
+            child: _buildBreathingAnimation(),
           ),
-          child: SafeArea(
-            child: Column(
-              children: [
-                _buildAppBar(),
-                Expanded(
-                  child: _buildContent(),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
+          child: Column(
+            children: [
+              ElevatedButton(
+                onPressed: _isPaused
+                    ? _resumeExercise
+                    : (_isPlaying ? _pauseExercise : _startExercise),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isPlaying
+                      ? (_isPaused ? Colors.green : Colors.orange)
+                      : Colors.green,
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
                 ),
-              ],
+                child: Text(
+                  _isPaused
+                      ? 'Resume'
+                      : (_isPlaying ? 'Pause' : 'Start Exercise'),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () {
+                  _stopExercise();
+                  setState(() {
+                    selectedExercise = null;
+                    _selectedDuration = null;
+                    _showDurationSelection = false;
+                  });
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.red.shade400,
+                ),
+                child: const Text(
+                  'Return to Selection',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBreathingAnimation() {
+    return AnimatedBuilder(
+      animation: _animationController ?? const AlwaysStoppedAnimation(0),
+      builder: (context, child) {
+        // Calculate breathing circle scale
+        double scale = 1.0;
+
+        if (_animationController != null && _isPlaying && !_isPaused) {
+          final value = _animationController!.value;
+          final totalDuration = _getTotalCycleDuration().toDouble();
+
+          if (totalDuration <= 0) return child ?? const SizedBox();
+
+          final inhaleDuration = selectedExercise!.inhaleTime / totalDuration;
+          final holdDuration = selectedExercise!.holdTime / totalDuration;
+          final exhaleDuration = selectedExercise!.exhaleTime / totalDuration;
+          final restDuration = selectedExercise!.holdOutTime / totalDuration;
+
+          // Handle all the phases in proper sequence
+          if (value < inhaleDuration) {
+            // Inhale phase - grow
+            scale = 0.8 + (value / inhaleDuration) * 0.4;
+            _currentPhase = 'Inhale';
+          } else if (value < inhaleDuration + holdDuration) {
+            // Hold phase - stay big
+            scale = 1.2;
+            _currentPhase = 'Hold';
+          } else if (value < inhaleDuration + holdDuration + exhaleDuration) {
+            // Exhale phase - shrink
+            final exhaleProgress =
+                (value - (inhaleDuration + holdDuration)) / exhaleDuration;
+            scale = 1.2 - exhaleProgress * 0.4;
+            _currentPhase = 'Exhale';
+          } else {
+            // Rest phase - stay small
+            scale = 0.8;
+            _currentPhase = 'Rest';
+          }
+        }
+
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            // Background ripples
+            ...List.generate(3, (index) {
+              final rippleScale = 1.0 + (index * 0.2);
+              return Container(
+                width: 220 * rippleScale,
+                height: 220 * rippleScale,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.green.withOpacity(0.1 - (index * 0.03)),
+                ),
+              );
+            }),
+
+            // Breathing circle with improved animation
+            AnimatedScale(
+              scale: scale,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: Container(
+                width: 220,
+                height: 220,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.green.shade300,
+                      Colors.green.shade600,
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.green.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _currentPhase,
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      if (_isPlaying)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                          child: Text(
+                            selectedExercise!.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white70,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      child: Container(
+        width: 220,
+        height: 220,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.green.shade300,
+        ),
+        child: const Center(
+          child: Text(
+            "Ready",
+            style: TextStyle(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
             ),
           ),
         ),
@@ -298,88 +564,226 @@ class _BreathingScreenState extends State<BreathingScreen>
     );
   }
 
-  Widget _buildAppBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.black54),
-            onPressed: () {
-              if (_isPlaying.value) {
-                _stopExercise();
-              }
-              Navigator.of(context).pop();
-            },
+  Widget _buildBreathingExerciseCard(BreathingExercise exercise) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          Expanded(
-            child: Text(
-              selectedExercise?.name ?? '',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(width: 48),
         ],
       ),
-    );
-  }
-
-  Widget _buildTimeChip(String text) {
-    return Container(
-      margin: const EdgeInsets.only(right: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.green.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.shade200),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 10,
-          color: Colors.green.shade700,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              selectedExercise = exercise;
+              _showDurationSelection = true;
+            });
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.air,
+                        color: Colors.green.shade600,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          exercise.name,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${_calculateTotalDuration(exercise)}s per cycle',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  exercise.description,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildBreathingPattern(exercise),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _initializeExercise() async {
+  Widget _buildBreathingPattern(BreathingExercise exercise) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        if (exercise.inhaleTime > 0)
+          _buildBreathingStep(
+              'Inhale', exercise.inhaleTime, Colors.blue.shade100),
+        if (exercise.holdTime > 0)
+          _buildBreathingStep(
+              'Hold', exercise.holdTime, Colors.yellow.shade100),
+        if (exercise.exhaleTime > 0)
+          _buildBreathingStep(
+              'Exhale', exercise.exhaleTime, Colors.green.shade100),
+        if (exercise.holdOutTime > 0)
+          _buildBreathingStep(
+              'Rest', exercise.holdOutTime, Colors.purple.shade100),
+      ],
+    );
+  }
+
+  Widget _buildBreathingStep(String label, int duration, Color color) {
+    return Column(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: Text(
+              duration.toString(),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _setupAudio() async {
+    try {
+      if (selectedExercise?.soundUrl != null) {
+        print('Setting up audio for ${selectedExercise!.name}');
+        await _audioPlayer?.setAsset(selectedExercise!.soundUrl!);
+        await _audioPlayer?.setLoopMode(LoopMode.one);
+        print('Audio setup completed');
+      }
+    } catch (e) {
+      print('Audio setup error: $e');
+    }
+  }
+
+  void _startExercise() {
     if (selectedExercise == null) return;
 
-    // Dispose previous controller if exists
-    _animationController?.dispose();
+    if (_animationController != null) {
+      _animationController!.dispose();
+      _animationController = null;
+    }
 
     _animationController = AnimationController(
       vsync: this,
       duration: Duration(seconds: _getTotalCycleDuration()),
-    );
-
-    _animationController!.addStatusListener(_handleAnimationStatus);
-    _animationController!.addListener(() {
-      if (!_isDisposed && mounted) {
-        setState(() {}); // Ensure the animation updates the UI
-        // Update message every cycle
-        if (_animationController!.value >= 0.99) {
-          _updateMotivationalMessage();
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          _animationController!.reset();
+          _animationController!.forward();
         }
-      }
+      });
+
+    setState(() {
+      _isPlaying = true;
+      _isPaused = false;
     });
 
-    // Initialize audio in the background
-    await _setupAudio();
+    _animationController!.forward();
+    _audioPlayer?.play();
+  }
 
-    // Show headphone recommendation after a short delay
-    if (!_isDisposed) {
-      await Future.delayed(const Duration(milliseconds: 300));
-      if (!_isDisposed && mounted) {
-        _showHeadphoneRecommendation();
-      }
-    }
+  void _pauseExercise() {
+    if (!_isPlaying) return;
+
+    setState(() {
+      _isPaused = true;
+    });
+
+    _animationController?.stop();
+    _audioPlayer?.pause();
+  }
+
+  void _resumeExercise() {
+    if (!_isPaused) return;
+
+    setState(() {
+      _isPaused = false;
+    });
+
+    _animationController?.forward();
+    _audioPlayer?.play();
+  }
+
+  void _stopExercise() {
+    if (!_isPlaying && !_isPaused) return;
+
+    setState(() {
+      _isPlaying = false;
+      _isPaused = false;
+    });
+
+    _animationController?.stop();
+    _audioPlayer?.pause();
   }
 
   int _calculateTotalDuration(BreathingExercise exercise) {
@@ -392,577 +796,5 @@ class _BreathingScreenState extends State<BreathingScreen>
   int _getTotalCycleDuration() {
     if (selectedExercise == null) return 0;
     return _calculateTotalDuration(selectedExercise!);
-  }
-
-  Future<void> _setupAudio() async {
-    if (selectedExercise?.soundUrl != null) {
-      try {
-        print('Setting up audio for ${selectedExercise!.name}');
-        print('Audio file path: ${selectedExercise!.soundUrl}');
-        await _audioPlayer.setAsset(selectedExercise!.soundUrl!);
-        await _audioPlayer.setLoopMode(LoopMode.one);
-        print('Audio setup completed successfully');
-      } catch (e) {
-        print('Audio setup failed: ${selectedExercise!.soundUrl} - Error: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Audio setup failed: $e'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      }
-    } else {
-      print('No audio file specified for ${selectedExercise?.name}');
-    }
-  }
-
-  void _handleAnimationStatus(AnimationStatus status) {
-    if (!_isDisposed && status == AnimationStatus.completed && mounted) {
-      _animationController!.reset();
-      _animationController!.forward();
-      _updateMotivationalMessage();
-    }
-  }
-
-  void _showHeadphoneRecommendation() {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (BuildContext context) {
-        return Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: () => Navigator.of(context).pop(),
-            child: Container(
-              color: Colors.transparent,
-              child: Center(
-                child: TweenAnimationBuilder(
-                  duration: const Duration(milliseconds: 200),
-                  tween: Tween<double>(begin: 0.8, end: 1.0),
-                  curve: Curves.easeOut,
-                  builder: (context, double value, child) {
-                    return Transform.scale(
-                      scale: value,
-                      child: child,
-                    );
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 32),
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 10,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.headphones,
-                          size: 48,
-                          color: Colors.green[600],
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Best Experience with Headphones',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'For optimal relaxation, we recommend using headphones',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Tap anywhere to continue',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _updateMotivationalMessage() {
-    if (_isPlaying.value) {
-      int newIndex;
-      do {
-        newIndex = (DateTime.now().microsecondsSinceEpoch % _motivationalMessages.length).toInt();
-      } while (newIndex == _lastMessageIndex && _motivationalMessages.length > 1);
-      
-      _lastMessageIndex = newIndex;
-      _motivationalMessage.value = _motivationalMessages[newIndex];
-    }
-  }
-
-  void _startExercise() {
-    if (_isDisposed || _animationController == null) return;
-    _isPlaying.value = true;
-    _updateMotivationalMessage();
-    _animationController!.repeat();
-
-    if (selectedExercise?.soundUrl != null) {
-      print('Starting audio playback for ${selectedExercise!.name}');
-      _audioPlayer.play().then((_) {
-        print('Audio playback started successfully');
-      }).catchError((e) {
-        print('Error playing audio: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error playing audio: $e'),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        }
-      });
-    }
-  }
-
-  void _stopExercise() {
-    if (_isDisposed || _animationController == null) return;
-    _isPlaying.value = false;
-    _currentPhase.value = 'Complete';
-    _animationController!.stop();
-    _animationController!.reset();
-    
-    print('Stopping audio playback');
-    _audioPlayer.stop().then((_) {
-      print('Audio playback stopped successfully');
-    }).catchError((e) {
-      print('Error stopping audio: $e');
-    });
-  }
-
-  Widget _buildContent() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          _buildInfoCard(),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _buildBreathingAnimation(),
-          ),
-          _buildControlButton(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.9),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Text(
-            selectedExercise?.description ?? '',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 15,
-              color: Colors.black87,
-              height: 1.4,
-            ),
-          ),
-          const Divider(height: 20),
-          Text(
-            selectedExercise?.technique ?? '',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[600],
-              height: 1.3,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBreathingAnimation() {
-    if (_animationController == null) {
-      return TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.8, end: 1.2),
-        duration: const Duration(seconds: 3),
-        curve: Curves.easeInOut,
-        builder: (context, value, child) {
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              // Outer ripple circles
-              ...List.generate(3, (index) {
-                final opacity = (1 - (index * 0.2));
-                final scale = value + (index * 0.1);
-                return Transform.scale(
-                  scale: scale,
-                  child: Container(
-                    width: 200,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.green.withOpacity(opacity * 0.3),
-                    ),
-                  ),
-                );
-              }).reversed,
-              // Main breathing circle
-              Container(
-                width: 180,
-                height: 180,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.green.shade300,
-                      Colors.green.shade500,
-                    ],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.green.withOpacity(0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: const Center(
-                  child: Text(
-                    'Inhale',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-        onEnd: () {
-          if (mounted && !_isDisposed) {
-            setState(() {}); // Restart animation
-          }
-        },
-      );
-    }
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        AnimatedBuilder(
-          animation: _animationController!,
-          builder: (context, child) {
-            final value = _animationController!.value;
-            final totalDuration = _getTotalCycleDuration().toDouble();
-            final inhaleDuration = selectedExercise!.inhaleTime / totalDuration;
-            final holdDuration = selectedExercise!.holdTime / totalDuration;
-            final exhaleDuration = selectedExercise!.exhaleTime / totalDuration;
-            final holdOutDuration =
-                selectedExercise!.holdOutTime / totalDuration;
-
-            double size;
-            String phase;
-
-            if (value < inhaleDuration) {
-              phase = 'Inhale';
-              size = 150 + (value / inhaleDuration) * 100;
-            } else if (value < inhaleDuration + holdDuration) {
-              phase = 'Hold';
-              size = 250;
-            } else if (value < inhaleDuration + holdDuration + exhaleDuration) {
-              phase = 'Exhale';
-              final exhaleProgress =
-                  (value - (inhaleDuration + holdDuration)) / exhaleDuration;
-              size = 250 - (exhaleProgress * 100);
-            } else {
-              phase = 'Rest';
-              size = 150;
-            }
-
-            if (!_isDisposed && mounted) {
-              _currentPhase.value = phase;
-            }
-
-            return _buildBreathingCircles(size);
-          },
-        ),
-        ValueListenableBuilder<bool>(
-          valueListenable: _isPlaying,
-          builder: (context, isPlaying, child) {
-            if (!isPlaying) return const SizedBox.shrink();
-            return _buildMotivationalMessage();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBreathingCircles(double size) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Container(
-          width: 300,
-          height: 300,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
-            shape: BoxShape.circle,
-          ),
-        ),
-        Container(
-          width: size + 40,
-          height: size + 40,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.3),
-            shape: BoxShape.circle,
-          ),
-        ),
-        _buildMainBreathingCircle(size),
-      ],
-    );
-  }
-
-  Widget _buildMainBreathingCircle(double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.green.shade300,
-            Colors.green.shade500,
-          ],
-        ),
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withOpacity(0.3),
-            blurRadius: 30,
-            spreadRadius: 5,
-          ),
-        ],
-      ),
-      child: Center(
-        child: ValueListenableBuilder<String>(
-          valueListenable: _currentPhase,
-          builder: (context, phase, child) {
-            return Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  phase,
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                if (_isPlaying.value)
-                  Text(
-                    '${(_animationController!.value * _getTotalCycleDuration()).toInt()} s',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      color: Colors.white70,
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMotivationalMessage() {
-    return Positioned(
-      bottom: 20,
-      left: 32,
-      right: 32,
-      child: ValueListenableBuilder<String>(
-        valueListenable: _motivationalMessage,
-        builder: (context, message, child) {
-          return Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.9),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 500),
-              transitionBuilder: (Widget child, Animation<double> animation) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: child,
-                );
-              },
-              child: Text(
-                message,
-                key: ValueKey<String>(message),
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.green[700],
-                  fontWeight: FontWeight.w500,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildControlButton() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 24),
-      child: ValueListenableBuilder<bool>(
-        valueListenable: _isPlaying,
-        builder: (context, isPlaying, child) {
-          return ElevatedButton(
-            onPressed: isPlaying ? _stopExercise : _startExercise,
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  isPlaying ? Colors.red.shade400 : Colors.green.shade600,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-              elevation: 4,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(isPlaying ? Icons.stop : Icons.play_arrow, size: 28),
-                const SizedBox(width: 8),
-                Text(
-                  isPlaying ? 'Stop Exercise' : 'Start Exercise',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildBreathingPattern(BreathingExercise exercise) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildPatternStep(
-              'Inhale', exercise.inhaleTime, Colors.blue.shade400),
-          if (exercise.holdTime > 0)
-            _buildPatternStep('Hold', exercise.holdTime, Colors.amber.shade400),
-          _buildPatternStep(
-              'Exhale', exercise.exhaleTime, Colors.green.shade400),
-          if (exercise.holdOutTime > 0)
-            _buildPatternStep(
-                'Rest', exercise.holdOutTime, Colors.purple.shade400),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPatternStep(String label, int duration, Color color) {
-    return Column(
-      children: [
-        Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(25),
-          ),
-          child: Center(
-            child: Text(
-              '$duration',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: color,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
-  }
-
-  @override
-  void dispose() {
-    _isDisposed = true;
-    _currentPhase.dispose();
-    _isPlaying.dispose();
-    _motivationalMessage.dispose();
-    _animationController?.dispose();
-    _audioPlayer.dispose();
-    super.dispose();
   }
 }
