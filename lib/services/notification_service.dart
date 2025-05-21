@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -12,28 +13,34 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static const String notificationPermissionKey = 'notification_permission_status';
+  static const String notificationPermissionKey =
+      'notification_permission_status';
+  static const String badgeCountKey = 'notification_badge_count';
 
   Future<void> initialize() async {
     // Initialize notification settings
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
-    
+
     const DarwinInitializationSettings initializationSettingsIOS =
         DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
       requestSoundPermission: false,
     );
-    
-    final InitializationSettings initializationSettings = InitializationSettings(
+
+    final InitializationSettings initializationSettings =
+        InitializationSettings(
       android: initializationSettingsAndroid,
       iOS: initializationSettingsIOS,
     );
-    
+
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
     );
+
+    // Initialize badge count from storage
+    await _loadBadgeCount();
   }
 
   // Request notification permissions
@@ -58,16 +65,60 @@ class NotificationService {
     await AppSettings.openAppSettings(type: AppSettingsType.notification);
   }
 
-  // Save permission status to SharedPreferences
-  Future<void> _savePermissionStatus(bool isGranted) async {
+  // Save permission status
+  Future<void> _savePermissionStatus(bool granted) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(notificationPermissionKey, isGranted);
+    await prefs.setBool(notificationPermissionKey, granted);
   }
 
   // Get saved permission status from SharedPreferences
   Future<bool?> getSavedPermissionStatus() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(notificationPermissionKey);
+  }
+
+  // Update badge count
+  Future<void> updateBadgeCount(int count) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(badgeCountKey, count);
+
+      // Update app icon badge number
+      if (Platform.isIOS) {
+        await flutterLocalNotificationsPlugin.initialize(
+          InitializationSettings(
+            android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
+            iOS: DarwinInitializationSettings(
+              requestAlertPermission: false,
+              requestBadgePermission: false,
+              requestSoundPermission: false,
+              onDidReceiveLocalNotification: null,
+            ),
+          ),
+        );
+      }
+
+      debugPrint('Updated notification badge count to: $count');
+    } catch (e) {
+      debugPrint('Error updating badge count: $e');
+    }
+  }
+
+  // Get current badge count
+  Future<int> getBadgeCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(badgeCountKey) ?? 0;
+  }
+
+  // Load badge count from storage
+  Future<void> _loadBadgeCount() async {
+    final count = await getBadgeCount();
+    await updateBadgeCount(count);
+  }
+
+  // Reset badge count
+  Future<void> resetBadgeCount() async {
+    await updateBadgeCount(0);
   }
 
   // Send a test notification
@@ -80,15 +131,15 @@ class NotificationService {
       importance: Importance.max,
       priority: Priority.high,
     );
-    
+
     const DarwinNotificationDetails iOSPlatformChannelSpecifics =
         DarwinNotificationDetails();
-    
+
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
       iOS: iOSPlatformChannelSpecifics,
     );
-    
+
     await flutterLocalNotificationsPlugin.show(
       0,
       'AnxieEase',

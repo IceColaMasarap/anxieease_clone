@@ -5,7 +5,7 @@ import 'services/supabase_service.dart';
 import 'providers/notification_provider.dart';
 import 'providers/theme_provider.dart';
 import 'utils/settings_helper.dart';
-import 'login.dart'; // For navigation after logout
+import 'auth.dart'; // Import for AuthScreen
 // Import for logout navigation
 
 class SettingsScreen extends StatefulWidget {
@@ -108,8 +108,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                         Navigator.of(context)
                                             .pushAndRemoveUntil(
                                           MaterialPageRoute(
-                                            builder: (context) => LoginScreen(
-                                              onSwitch: () {},
+                                            builder: (context) =>
+                                                const AuthScreen(
+                                              showLogin: true,
                                             ),
                                           ),
                                           (route) => false,

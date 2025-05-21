@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/supabase_service.dart';
 import 'login.dart';
+import 'forgotpass.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -8,7 +9,8 @@ class ResetPasswordScreen extends StatefulWidget {
   final String? email;
   final String? errorMessage;
 
-  const ResetPasswordScreen({super.key, this.token, this.email, this.errorMessage});
+  const ResetPasswordScreen(
+      {super.key, this.token, this.email, this.errorMessage});
 
   @override
   State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
@@ -16,12 +18,14 @@ class ResetPasswordScreen extends StatefulWidget {
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
   bool _isSuccess = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _tokenExpired = false;
 
   @override
   void initState() {
@@ -32,19 +36,25 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         print('Reset password screen initialized with email: ${widget.email}');
       }
     }
-    
+
     // Set error message if provided
     if (widget.errorMessage != null) {
       setState(() {
         _errorMessage = widget.errorMessage;
+        // Check if the error message indicates token expiration
+        if (widget.errorMessage!.contains('expired') ||
+            widget.errorMessage!.contains('invalid')) {
+          _tokenExpired = true;
+        }
       });
     }
   }
 
   Future<void> _updatePassword() async {
-    if (_passwordController.text.isEmpty) {
+    if (_passwordController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty) {
       setState(() {
-        _errorMessage = 'Please enter a new password';
+        _errorMessage = 'Please fill in all fields';
       });
       return;
     }
@@ -56,6 +66,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       return;
     }
 
+    // Enhanced password validation
     if (_passwordController.text.length < 6) {
       setState(() {
         _errorMessage = 'Password must be at least 6 characters long';
@@ -69,68 +80,57 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     });
 
     try {
-      // If we have a token from the reset password link
+      // If we have a token from the reset password link or verification code
       if (widget.token != null) {
         try {
-          print('Attempting to update password with recovery token: ${widget.token}');
-          
-          // Use our improved recoverPassword method that handles both token and email
-          await SupabaseService().recoverPassword(
-            widget.token!,
-            _passwordController.text,
-            email: widget.email,
-          );
-          
-          print('Password updated successfully with recovery flow');
+          print(
+              'Attempting to update password with recovery token: ${widget.token}');
+
+          // Use our updated method to handle token reset
+          await SupabaseService()
+              .updatePasswordWithToken(_passwordController.text);
+
           setState(() {
             _isSuccess = true;
           });
-        } catch (e) {
-          print('Error updating password with recovery token: $e');
-          setState(() {
-            _errorMessage = e.toString().contains('Exception:') 
-                ? e.toString().split('Exception: ')[1]
-                : 'Invalid or expired reset link. Please request a new one.';
-            _isLoading = false;
-          });
-          return;
-        }
-      } else {
-        // No token provided, try to update password for current user
-        try {
-          final client = Supabase.instance.client;
-          final user = client.auth.currentUser;
-          if (user != null) {
-            await SupabaseService().updatePassword(_passwordController.text);
-            setState(() {
-              _isSuccess = true;
-            });
-          } else {
-            throw Exception('You must be logged in to update your password');
+
+          // Wait for 2 seconds before navigating to login
+          await Future.delayed(const Duration(seconds: 2));
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                builder: (context) => LoginScreen(
+                  onSwitch: () {
+                    // This won't be called as we're coming from password reset
+                  },
+                ),
+              ),
+              (route) => false,
+            );
           }
         } catch (e) {
-          print('Error updating password for current user: $e');
-          setState(() {
-            _errorMessage = 'You must be logged in to update your password.';
-            _isLoading = false;
-          });
-          return;
-        }
-      }
+          print('Error updating password: $e');
 
-      // Wait for 2 seconds before navigating to login
-      await Future.delayed(const Duration(seconds: 2));
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => LoginScreen(
-              onSwitch: () {
-                // This won't be called as we're coming from password reset
-              },
-            ),
-          ),
-          (route) => false,
-        );
+          if (e.toString().contains('expired') ||
+              e.toString().contains('invalid') ||
+              e.toString().contains('otp_expired')) {
+            setState(() {
+              _errorMessage =
+                  'Your reset link has expired. Please request a new one.';
+              _tokenExpired = true;
+            });
+          } else {
+            setState(() {
+              _errorMessage = 'Failed to update password: ${e.toString()}';
+            });
+          }
+        }
+      } else {
+        setState(() {
+          _errorMessage =
+              'No valid reset token found. Please request a new password reset.';
+          _tokenExpired = true;
+        });
       }
     } catch (e) {
       setState(() {
@@ -143,6 +143,15 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     }
   }
 
+  // Navigate to forgot password screen to request a new reset link
+  void _requestNewResetLink() {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => const Forgotpass(),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _passwordController.dispose();
@@ -153,7 +162,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -161,7 +170,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           child: Column(
             children: [
               SizedBox(height: size.height * 0.05),
-              
+
               // App Logo
               Container(
                 height: 130,
@@ -182,9 +191,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 20),
-              
+
               // Reset Password Text
               const Text(
                 "Reset Password",
@@ -195,14 +204,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   fontFamily: 'Poppins',
                 ),
               ),
-              
+
               const SizedBox(height: 10),
-              
+
               // Subtitle
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 40),
                 child: Text(
-                  widget.errorMessage != null
+                  widget.errorMessage != null || _tokenExpired
                       ? "Please request a new password reset link"
                       : "Create a new password for your account",
                   textAlign: TextAlign.center,
@@ -213,9 +222,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 40),
-              
+
               // Main Content Container
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 24),
@@ -256,6 +265,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         ),
                       ),
 
+                    // Error message display
                     if (_errorMessage != null)
                       Container(
                         padding: const EdgeInsets.all(15),
@@ -265,21 +275,73 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Icon(Icons.error_outline, color: Colors.red),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: const TextStyle(color: Colors.red),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _tokenExpired
+                                        ? 'Password Reset Link Expired'
+                                        : 'Error',
+                                    style: const TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    _errorMessage!,
+                                    style: const TextStyle(color: Colors.red),
+                                  ),
+                                  if (_tokenExpired)
+                                    const Padding(
+                                      padding: EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        'For security reasons, password reset links expire after a short time. Please request a new link using the button below.',
+                                        style: TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
 
+                    // If token expired, show a button to request a new reset link
+                    if (_tokenExpired)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 20),
+                        child: ElevatedButton(
+                          onPressed: _requestNewResetLink,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF3AA772),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          child: const Text(
+                            "Request New Reset Link",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+
                     // Show password fields only if no error message from link expiration
-                    if (widget.errorMessage == null) ...[
+                    if (widget.errorMessage == null && !_tokenExpired) ...[
                       // New Password Field
                       const Text(
                         "New Password",
@@ -369,7 +431,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                             ),
                             onPressed: () {
                               setState(() {
-                                _obscureConfirmPassword = !_obscureConfirmPassword;
+                                _obscureConfirmPassword =
+                                    !_obscureConfirmPassword;
                               });
                             },
                           ),
@@ -382,7 +445,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
                       // Update Password Button
                       ElevatedButton(
-                        onPressed: _isLoading || _isSuccess ? null : _updatePassword,
+                        onPressed:
+                            _isLoading || _isSuccess ? null : _updatePassword,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF3AA772),
                           foregroundColor: Colors.white,
@@ -402,7 +466,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                                 ),
                               )
                             : Text(
-                                _isSuccess ? "Password Updated" : "Update Password",
+                                _isSuccess
+                                    ? "Password Updated"
+                                    : "Update Password",
                                 style: const TextStyle(
                                   fontSize: 18,
                                   fontWeight: FontWeight.w600,
@@ -415,9 +481,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         onPressed: () {
                           Navigator.of(context).pushAndRemoveUntil(
                             MaterialPageRoute(
-                              builder: (context) => LoginScreen(
-                                onSwitch: () {},
-                              ),
+                              builder: (context) => const Forgotpass(),
                             ),
                             (route) => false,
                           );
@@ -432,7 +496,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                           elevation: 0,
                         ),
                         child: const Text(
-                          "Request New Link",
+                          "Request New Reset Code",
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
@@ -440,9 +504,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         ),
                       ),
                     ],
-                    
+
                     const SizedBox(height: 20),
-                    
+
                     // Back to Login
                     if (!_isSuccess)
                       TextButton(
@@ -468,7 +532,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 30),
             ],
           ),

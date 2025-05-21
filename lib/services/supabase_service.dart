@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/logger.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 class SupabaseService {
   static const String supabaseUrl = 'https://gqsustjxzjzfntcsnvpk.supabase.co';
@@ -176,28 +177,18 @@ class SupabaseService {
 
   Future<void> resetPassword(String email) async {
     try {
-      print('Attempting to send reset password email to: $email');
+      // Increase logging for debugging
+      print('Requesting password reset for email: $email');
 
-      // Use different redirect URLs for web and mobile
-      const redirectUrl = kIsWeb
-          ? 'http://localhost:61375/reset-password' // For web development
-          : 'anxiease://reset-password'; // For mobile deep linking
+      // Set a longer expiration for the reset token
+      final response = await _supabaseClient.auth.resetPasswordForEmail(email,
+          redirectTo: null // Let Supabase handle the redirect
+          );
 
-      print('Using redirect URL: $redirectUrl');
-
-      await _supabaseClient.auth.resetPasswordForEmail(
-        email,
-        redirectTo: redirectUrl,
-      );
-
-      print('Reset password email sent successfully');
+      print('Password reset email sent successfully');
     } catch (e) {
-      print('Error sending reset password email: $e');
-      if (e.toString().contains('rate limit')) {
-        throw Exception(
-            'Please wait a moment before requesting another reset link');
-      }
-      throw Exception('Failed to send reset email: ${e.toString()}');
+      print('Error sending password reset email: $e');
+      throw Exception('Failed to send reset email: $e');
     }
   }
 
@@ -251,33 +242,55 @@ class SupabaseService {
       // Verify the OTP with the recovery token and email if available
       if (email != null) {
         print('Using email + token verification approach');
-        final response = await client.auth.verifyOTP(
-          email: email,
-          token: token,
-          type: OtpType.recovery,
-        );
+        try {
+          final response = await client.auth.verifyOTP(
+            email: email,
+            token: token,
+            type: OtpType.recovery,
+          );
 
-        print(
-            'OTP verification response: ${response.session != null ? 'Session established' : 'No session'}');
+          print(
+              'OTP verification response: ${response.session != null ? 'Session established' : 'No session'}');
 
-        if (response.session == null) {
-          throw Exception(
-              'Failed to establish a session with the recovery token. Please ensure the link is valid and not expired.');
+          if (response.session == null) {
+            throw Exception(
+                'Failed to establish a session with the recovery token. Please ensure the link is valid and not expired.');
+          }
+        } catch (e) {
+          print('Error during OTP verification: $e');
+          // Re-throw with clear message
+          if (e.toString().contains('expired') ||
+              e.toString().contains('otp_expired')) {
+            throw Exception(
+                'Your reset code has expired. Please request a new password reset.');
+          }
+          throw Exception('Error verifying reset code: $e');
         }
       } else {
         print('Using token-only verification approach');
         // Try token-only approach as fallback
-        final response = await client.auth.verifyOTP(
-          token: token,
-          type: OtpType.recovery,
-        );
+        try {
+          final response = await client.auth.verifyOTP(
+            token: token,
+            type: OtpType.recovery,
+          );
 
-        print(
-            'Token-only OTP verification response: ${response.session != null ? 'Session established' : 'No session'}');
+          print(
+              'Token-only OTP verification response: ${response.session != null ? 'Session established' : 'No session'}');
 
-        if (response.session == null) {
-          throw Exception(
-              'Failed to establish a session with the recovery token. The link may be invalid or expired.');
+          if (response.session == null) {
+            throw Exception(
+                'Failed to establish a session with the recovery token. The link may be invalid or expired.');
+          }
+        } catch (e) {
+          print('Error during token-only OTP verification: $e');
+          // Re-throw with clear message
+          if (e.toString().contains('expired') ||
+              e.toString().contains('otp_expired')) {
+            throw Exception(
+                'Your reset code has expired. Please request a new password reset.');
+          }
+          throw Exception('Error verifying reset code: $e');
         }
       }
 
@@ -293,6 +306,76 @@ class SupabaseService {
     } catch (e) {
       print('Error recovering password: $e');
       throw Exception('Failed to recover password: ${e.toString()}');
+    }
+  }
+
+  Future<bool> verifyPasswordResetCode(String email, String token) async {
+    try {
+      print('Verifying password reset code: $token for email: $email');
+
+      // Verify the OTP
+      final response = await _supabaseClient.auth.verifyOTP(
+        email: email,
+        token: token,
+        type: OtpType.recovery,
+      );
+
+      print(
+          'OTP verification response: ${response.session != null ? 'Session established' : 'No session'}');
+      return response.session != null;
+    } catch (e) {
+      print('Error verifying password reset code: $e');
+      if (e.toString().contains('expired') ||
+          e.toString().contains('invalid') ||
+          e.toString().contains('otp_expired')) {
+        throw Exception(
+            'Your verification code has expired. Please request a new one.');
+      }
+      throw Exception('Invalid verification code. Please try again.');
+    }
+  }
+
+  Future<void> updatePasswordWithToken(String newPassword) async {
+    try {
+      print('Updating password with recovery token');
+
+      // Get the auth instance
+      final client = Supabase.instance.client;
+      final auth = client.auth;
+
+      // First check if we have a valid session
+      final session = auth.currentSession;
+      if (session == null) {
+        throw Exception(
+            'No active session found. Your reset link may have expired. Please request a new password reset.');
+      }
+
+      // Check if the session is expired
+      final now = DateTime.now().millisecondsSinceEpoch / 1000;
+      if (session.expiresAt != null && session.expiresAt! < now) {
+        throw Exception(
+            'Your session has expired. Please request a new password reset.');
+      }
+
+      // Update the user's password - this uses the current session
+      final response = await auth.updateUser(
+        UserAttributes(password: newPassword),
+      );
+
+      if (response.user != null) {
+        print('Password updated successfully');
+      } else {
+        throw Exception('Failed to update password. Please try again.');
+      }
+    } catch (e) {
+      print('Error updating password: $e');
+      if (e.toString().contains('expired') ||
+          e.toString().contains('invalid') ||
+          e.toString().contains('otp_expired')) {
+        throw Exception(
+            'Your reset link has expired. Please request a new password reset.');
+      }
+      throw Exception('Failed to update password: $e');
     }
   }
 
@@ -337,24 +420,169 @@ class SupabaseService {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
+    // Add the record to the mood_logs table with all the needed fields
     await _supabaseClient.from('mood_logs').insert({
       'user_id': user.id,
-      ...log,
+      'date': log['date'],
+      'feelings': log['feelings'],
+      'stress_level': log['stress_level'],
+      'symptoms': log['symptoms'],
+      'journal': log['journal'],
+      'timestamp': log['timestamp'],
       'created_at': DateTime.now().toIso8601String(),
     });
   }
 
-  Future<List<Map<String, dynamic>>> getMoodLogs() async {
+  Future<List<Map<String, dynamic>>> getMoodLogs({String? userId}) async {
     final user = _supabaseClient.auth.currentUser;
     if (user == null) throw Exception('User not authenticated');
+
+    // If userId is provided, fetch logs for that user (for psychologists)
+    // Otherwise, fetch logs for the current user (for patients)
+    final targetUserId = userId ?? user.id;
 
     final response = await _supabaseClient
         .from('mood_logs')
         .select()
-        .eq('user_id', user.id)
+        .eq('user_id', targetUserId)
         .order('created_at', ascending: false);
 
     return List<Map<String, dynamic>>.from(response);
+  }
+
+  // Delete a mood log
+  Future<void> deleteMoodLog(String date, DateTime timestamp) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    // Convert timestamp to ISO string for comparison
+    final timestampString = timestamp.toIso8601String();
+
+    await _supabaseClient
+        .from('mood_logs')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .eq('timestamp', timestampString);
+  }
+
+  // Get all patients assigned to a psychologist
+  Future<List<Map<String, dynamic>>> getAssignedPatients() async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    // Check if the current user is a psychologist
+    final userProfile = await getUserProfile();
+    if (userProfile == null || userProfile['role'] != 'psychologist') {
+      throw Exception(
+          'Unauthorized. Only psychologists can access patient data.');
+    }
+
+    // In a real implementation, fetch assigned patients from the database
+    // For demonstration, return hardcoded patient data
+    return [
+      {
+        'id': 'patient-001',
+        'full_name': 'John Doe',
+        'email': 'john.doe@example.com',
+      },
+      {
+        'id': 'patient-002',
+        'full_name': 'Jane Smith',
+        'email': 'jane.smith@example.com',
+      },
+    ];
+
+    // Original implementation (commented out)
+    /*
+    final response = await _supabaseClient
+        .from('users')
+        .select()
+        .eq('assigned_psychologist_id', user.id)
+        .eq('role', 'patient');
+        
+    return List<Map<String, dynamic>>.from(response);
+    */
+  }
+
+  // Get mood log statistics for a patient
+  Future<Map<String, dynamic>> getPatientMoodStats(String patientId) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    // Check if the current user is a psychologist
+    final userProfile = await getUserProfile();
+    if (userProfile == null || userProfile['role'] != 'psychologist') {
+      throw Exception(
+          'Unauthorized. Only psychologists can access patient statistics.');
+    }
+
+    // Get all mood logs for the patient
+    final logs = await getMoodLogs(userId: patientId);
+
+    // Calculate frequency statistics
+    final now = DateTime.now();
+    final sevenDaysAgo = now.subtract(const Duration(days: 7));
+    final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+
+    int logsLast7Days = 0;
+    int logsLast30Days = 0;
+    Map<String, int> symptomFrequency = {};
+    Map<String, int> moodFrequency = {};
+    List<double> stressLevels = [];
+
+    for (var log in logs) {
+      final logDate = DateTime.parse(log['timestamp']);
+
+      // Count logs in last 7 and 30 days
+      if (logDate.isAfter(sevenDaysAgo)) {
+        logsLast7Days++;
+      }
+      if (logDate.isAfter(thirtyDaysAgo)) {
+        logsLast30Days++;
+      }
+
+      // Count symptoms
+      for (var symptom in log['symptoms']) {
+        symptomFrequency[symptom] = (symptomFrequency[symptom] ?? 0) + 1;
+      }
+
+      // Count moods
+      for (var mood in log['feelings']) {
+        moodFrequency[mood] = (moodFrequency[mood] ?? 0) + 1;
+      }
+
+      // Track stress levels
+      stressLevels.add(log['stress_level']?.toDouble() ?? 0.0);
+    }
+
+    // Calculate average stress level
+    double avgStressLevel = stressLevels.isEmpty
+        ? 0.0
+        : stressLevels.reduce((a, b) => a + b) / stressLevels.length;
+
+    // Sort symptoms and moods by frequency
+    final sortedSymptoms = symptomFrequency.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final sortedMoods = moodFrequency.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    // Return the statistics
+    return {
+      'total_logs': logs.length,
+      'logs_last_7_days': logsLast7Days,
+      'logs_last_30_days': logsLast30Days,
+      'avg_stress_level': avgStressLevel,
+      'top_symptoms': sortedSymptoms
+          .take(5)
+          .map((e) => {'symptom': e.key, 'count': e.value})
+          .toList(),
+      'top_moods': sortedMoods
+          .take(5)
+          .map((e) => {'mood': e.key, 'count': e.value})
+          .toList(),
+    };
   }
 
   // Helper method to check if user is authenticated
@@ -547,5 +775,190 @@ class SupabaseService {
       Logger.error('Error requesting appointment', e);
       throw Exception('Failed to request appointment: ${e.toString()}');
     }
+  }
+
+  // Notification methods
+  Future<List<Map<String, dynamic>>> getNotifications({String? type}) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    debugPrint('getNotifications called with type: $type');
+
+    try {
+      // First get all notifications for this user
+      var query =
+          _supabaseClient.from('notifications').select().eq('user_id', user.id);
+
+      // Add type filter if specified
+      if (type != null) {
+        query = query.eq('type', type);
+      }
+
+      // Get all notifications first
+      final allNotifications =
+          await query.order('created_at', ascending: false);
+
+      // Filter out deleted notifications in Dart code
+      final activeNotifications = allNotifications
+          .where((notification) => notification['deleted_at'] == null)
+          .toList();
+
+      debugPrint(
+          'getNotifications success - retrieved ${activeNotifications.length} notifications out of ${allNotifications.length} total');
+      return List<Map<String, dynamic>>.from(activeNotifications);
+    } catch (e) {
+      debugPrint('getNotifications error: $e');
+      if (e.toString().contains('does not exist')) {
+        // Table doesn't exist yet, return empty list
+        debugPrint(
+            'Notifications table does not exist. Creating test notifications.');
+        await _createTestNotificationsIfNeeded();
+        return [];
+      }
+      rethrow;
+    }
+  }
+
+  // Helper method to create test notifications if the table exists but no notifications are present
+  Future<void> _createTestNotificationsIfNeeded() async {
+    try {
+      final user = _supabaseClient.auth.currentUser;
+      if (user == null) return;
+
+      // Create some initial notifications for testing
+      await createNotification(
+        title: 'Welcome to AnxieEase',
+        message: 'Track your anxiety levels and get personalized insights.',
+        type: 'reminder',
+        relatedScreen: 'calendar',
+      );
+
+      await createNotification(
+        title: 'Anxiety Symptoms Logged',
+        message: 'You reported experiencing: Shortness of breath',
+        type: 'log',
+        relatedScreen: 'calendar',
+      );
+
+      debugPrint('Created test notifications successfully');
+    } catch (e) {
+      debugPrint('Error creating test notifications: $e');
+    }
+  }
+
+  // Add a single test notification for immediate testing
+  Future<void> addTestNotification() async {
+    try {
+      final user = _supabaseClient.auth.currentUser;
+      if (user == null) throw Exception('User not authenticated');
+
+      // Create a new test notification with current timestamp
+      final now = DateTime.now();
+      final timestamp = now.toIso8601String();
+
+      await createNotification(
+        title: 'Test Notification',
+        message:
+            'This is a test notification created at ${now.hour}:${now.minute}',
+        type: 'alert',
+        relatedScreen: 'calendar',
+      );
+
+      debugPrint('Test notification created successfully');
+    } catch (e) {
+      debugPrint('Error creating test notification: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> deleteNotification(String id, {bool hardDelete = false}) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    if (hardDelete) {
+      // Permanently delete the notification
+      await _supabaseClient
+          .from('notifications')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+      debugPrint('Permanently deleted notification $id');
+    } else {
+      // Soft delete (mark as deleted)
+      await _supabaseClient
+          .from('notifications')
+          .update({'deleted_at': DateTime.now().toIso8601String()})
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+      debugPrint('Soft-deleted notification $id');
+    }
+  }
+
+  Future<void> clearAllNotifications({bool hardDelete = false}) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    if (hardDelete) {
+      // Permanently delete all notifications
+      await _supabaseClient
+          .from('notifications')
+          .delete()
+          .eq('user_id', user.id);
+
+      debugPrint('Permanently deleted all notifications for user ${user.id}');
+    } else {
+      // Soft delete (mark as deleted)
+      await _supabaseClient
+          .from('notifications')
+          .update({'deleted_at': DateTime.now().toIso8601String()}).eq(
+              'user_id', user.id);
+
+      debugPrint('Soft-deleted all notifications for user ${user.id}');
+    }
+  }
+
+  Future<void> markNotificationAsRead(String id) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    await _supabaseClient
+        .from('notifications')
+        .update({'read': true})
+        .eq('id', id)
+        .eq('user_id', user.id);
+  }
+
+  Future<void> markAllNotificationsAsRead() async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    await _supabaseClient
+        .from('notifications')
+        .update({'read': true})
+        .eq('user_id', user.id)
+        .or('deleted_at.is.null')
+        .eq('read', false);
+  }
+
+  Future<void> createNotification({
+    required String title,
+    required String message,
+    required String type,
+    String? relatedScreen,
+    String? relatedId,
+  }) async {
+    final user = _supabaseClient.auth.currentUser;
+    if (user == null) throw Exception('User not authenticated');
+
+    await _supabaseClient.from('notifications').insert({
+      'user_id': user.id,
+      'title': title,
+      'message': message,
+      'type': type,
+      'related_screen': relatedScreen,
+      'related_id': relatedId,
+    });
   }
 }

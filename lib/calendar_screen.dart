@@ -3,6 +3,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'services/supabase_service.dart';
 
 class DailyLog {
   final List<String> feelings;
@@ -10,6 +11,7 @@ class DailyLog {
   final List<String> symptoms;
   final DateTime timestamp;
   final String? journal;
+  String? id; // Added Supabase ID field
 
   DailyLog({
     required this.feelings,
@@ -17,6 +19,7 @@ class DailyLog {
     required this.symptoms,
     required this.timestamp,
     this.journal,
+    this.id,
   });
 
   Map<String, dynamic> toJson() => {
@@ -25,6 +28,7 @@ class DailyLog {
         'symptoms': symptoms,
         'timestamp': timestamp.toIso8601String(),
         'journal': journal,
+        'id': id,
       };
 
   factory DailyLog.fromJson(Map<String, dynamic> json) => DailyLog(
@@ -33,7 +37,29 @@ class DailyLog {
         symptoms: List<String>.from(json['symptoms']),
         timestamp: DateTime.parse(json['timestamp']),
         journal: json['journal'],
+        id: json['id'],
       );
+
+  // Convert to format for Supabase mood_logs table
+  Map<String, dynamic> toSupabaseJson() => {
+        'date': DateFormat('yyyy-MM-dd').format(timestamp),
+        'feelings': feelings,
+        'stress_level': stressLevel,
+        'symptoms': symptoms,
+        'journal': journal,
+        'timestamp': timestamp.toIso8601String(),
+      };
+
+  // Save this log to Supabase
+  Future<void> syncWithSupabase() async {
+    try {
+      final supabaseService = SupabaseService();
+      final data = toSupabaseJson();
+      await supabaseService.saveMoodLog(data);
+    } catch (e) {
+      print('Error syncing log to Supabase: $e');
+    }
+  }
 }
 
 class CalendarScreen extends StatefulWidget {
@@ -44,11 +70,12 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
+  Map<DateTime, List<DailyLog>> _dailyLogs = {};
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
-  Map<DateTime, List<DailyLog>> _dailyLogs = {};
   static const String LOGS_KEY = 'daily_logs';
+  final SupabaseService _supabaseService = SupabaseService();
 
   final Map<String, bool> symptoms = {
     'None': false,
@@ -69,6 +96,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
     super.initState();
     _loadLogs();
     _selectedDay = DateTime.now();
+    // Check if user is logged in and sync logs
+    _syncLogsWithSupabase();
   }
 
   Future<void> _loadLogs() async {
@@ -87,6 +116,29 @@ class _CalendarScreenState extends State<CalendarScreen> {
           );
         });
       });
+    }
+  }
+
+  Future<void> _syncLogsWithSupabase() async {
+    // Check if user is authenticated
+    if (!_supabaseService.isAuthenticated) return;
+
+    // First sync existing logs from SharedPreferences to Supabase
+    try {
+      // Flatten the logs into a list
+      final List<DailyLog> allLogs = [];
+      _dailyLogs.forEach((date, logs) {
+        allLogs.addAll(logs);
+      });
+
+      // Sync each log to Supabase
+      for (var log in allLogs) {
+        await log.syncWithSupabase();
+      }
+
+      print('Successfully synced ${allLogs.length} logs with Supabase');
+    } catch (e) {
+      print('Error syncing logs with Supabase: $e');
     }
   }
 
@@ -137,15 +189,34 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              final key = _normalizeDate(date);
+              final logToDelete = _dailyLogs[key]?[index];
+
               setState(() {
-                final key = _normalizeDate(date);
                 _dailyLogs[key]?.removeAt(index);
                 if (_dailyLogs[key]?.isEmpty ?? false) {
                   _dailyLogs.remove(key);
                 }
               });
-              _saveLogs();
+
+              await _saveLogs();
+
+              // Also delete from Supabase if the user is authenticated
+              if (logToDelete != null) {
+                try {
+                  if (_supabaseService.isAuthenticated) {
+                    // Format date for Supabase
+                    final formattedDate = DateFormat('yyyy-MM-dd').format(date);
+                    await _supabaseService.deleteMoodLog(
+                        formattedDate, logToDelete.timestamp);
+                  }
+                } catch (e) {
+                  print('Error deleting log from Supabase: $e');
+                  // Don't show error to user as local deletion still worked
+                }
+              }
+
               Navigator.pop(context);
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
@@ -160,6 +231,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       double stressLevel, List<String> selectedSymptoms,
       [DailyLog? existingLog, String? journal]) async {
     final normalizedDate = _normalizeDate(selectedDate);
+    DailyLog? logToSync;
 
     setState(() {
       if (!_dailyLogs.containsKey(normalizedDate)) {
@@ -171,28 +243,85 @@ class _CalendarScreenState extends State<CalendarScreen> {
         final index = _dailyLogs[normalizedDate]!
             .indexWhere((log) => log.timestamp == existingLog.timestamp);
         if (index != -1) {
-          _dailyLogs[normalizedDate]![index] = DailyLog(
+          logToSync = DailyLog(
             feelings: selectedMoods,
             stressLevel: stressLevel,
             symptoms: selectedSymptoms,
-            timestamp: existingLog.timestamp, // Keep original timestamp
-            journal: journal ??
-                existingLog.journal, // Keep existing journal if not updated
+            timestamp: existingLog.timestamp,
+            journal: journal,
+            id: existingLog.id,
           );
+          _dailyLogs[normalizedDate]![index] = logToSync!;
         }
       } else {
-        // Add new log
-        _dailyLogs[normalizedDate]!.add(DailyLog(
+        // Create new log
+        logToSync = DailyLog(
           feelings: selectedMoods,
           stressLevel: stressLevel,
           symptoms: selectedSymptoms,
           timestamp: DateTime.now(),
           journal: journal,
-        ));
+        );
+        _dailyLogs[normalizedDate]!.add(logToSync!);
       }
     });
 
     await _saveLogs();
+
+    // Sync with Supabase
+    try {
+      await logToSync?.syncWithSupabase();
+
+      // Create notification for high stress levels
+      if (stressLevel >= 7) {
+        await _supabaseService.createNotification(
+          title: 'High Stress Level Detected',
+          message:
+              'Your stress level was recorded as ${stressLevel.toInt()}/10. Consider using breathing exercises.',
+          type: 'alert',
+          relatedScreen: 'calendar',
+          relatedId: logToSync?.id,
+        );
+      }
+
+      // Create notification for anxiety symptoms if there are any
+      if (selectedSymptoms.isNotEmpty && !selectedSymptoms.contains('None')) {
+        final symptomsList = selectedSymptoms.join(", ");
+        await _supabaseService.createNotification(
+          title: 'Anxiety Symptoms Logged',
+          message: 'You reported experiencing: $symptomsList',
+          type: 'log',
+          relatedScreen: 'calendar',
+          relatedId: logToSync?.id,
+        );
+      }
+
+      // Create notification for mood patterns - check for anxious or fearful moods
+      if (selectedMoods.any((mood) =>
+          mood.toLowerCase() == 'anxious' || mood.toLowerCase() == 'fearful')) {
+        await _supabaseService.createNotification(
+          title: 'Mood Pattern Alert',
+          message:
+              'You\'ve been feeling anxious or fearful. Would you like to try some calming exercises?',
+          type: 'reminder',
+          relatedScreen: 'calendar',
+          relatedId: logToSync?.id,
+        );
+      }
+
+      // Create notification for journal entry if it exists and has content
+      if (journal != null && journal.isNotEmpty) {
+        await _supabaseService.createNotification(
+          title: 'Journal Entry Added',
+          message: 'You\'ve added a new journal entry to your log.',
+          type: 'log',
+          relatedScreen: 'calendar',
+          relatedId: logToSync?.id,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error syncing with Supabase: $e');
+    }
   }
 
   void _showFeelingsDialog([DailyLog? existingLog]) {
@@ -1731,6 +1860,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     if (journalText.isEmpty) return;
 
     final normalizedDate = _normalizeDate(_selectedDay!);
+    DailyLog? logToSync;
 
     setState(() {
       if (!_dailyLogs.containsKey(normalizedDate)) {
@@ -1738,16 +1868,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
 
       // Create a journal-only entry
-      _dailyLogs[normalizedDate]!.add(DailyLog(
+      logToSync = DailyLog(
         feelings: [], // Empty list for feelings
         stressLevel: 0, // Default stress level
         symptoms: [], // Empty list for symptoms
         timestamp: DateTime.now(),
         journal: journalText,
-      ));
+      );
+      _dailyLogs[normalizedDate]!.add(logToSync!);
     });
 
     await _saveLogs();
+
+    // Sync with Supabase
+    try {
+      await logToSync?.syncWithSupabase();
+    } catch (e) {
+      print('Error syncing journal with Supabase: $e');
+      // Don't show error to user, as local storage still worked
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(

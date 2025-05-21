@@ -8,10 +8,13 @@ import 'services/supabase_service.dart';
 import 'services/notification_service.dart';
 import 'services/storage_service.dart';
 import 'reset_password.dart';
+import 'verify_reset_code.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'splash_screen.dart';
 import 'theme/app_theme.dart';
+import 'package:flutter/services.dart';
+import 'screens/notifications_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -82,6 +85,111 @@ class _MyAppState extends State<MyApp> {
     print('URI query parameters: ${uri.queryParameters}');
     print('URI fragment: ${uri.fragment}');
 
+    // Check if this is a reset password link - look for different path variations
+    bool isResetPasswordLink = uri.path == '/reset-password' ||
+        uri.path.contains('reset-password') ||
+        uri.toString().contains('type=recovery') ||
+        uri.toString().contains('/auth/recovery') ||
+        uri.toString().contains('/auth/callback') ||
+        uri.toString().contains('#access_token=');
+
+    if (isResetPasswordLink) {
+      print('Reset password link detected');
+
+      String? token;
+      String? email;
+
+      // Check for various token formats in the URI
+      if (uri.queryParameters.containsKey('code')) {
+        token = uri.queryParameters['code'];
+        print('Code parameter found: $token');
+      }
+
+      // Check for token parameter (alternative approach)
+      if (token == null && uri.queryParameters.containsKey('token')) {
+        token = uri.queryParameters['token'];
+        print('Token parameter found: $token');
+      }
+
+      // Check for access_token in fragment (Supabase often uses this)
+      if (token == null && uri.fragment.isNotEmpty) {
+        final fragmentParams = Uri.splitQueryString(uri.fragment);
+        if (fragmentParams.containsKey('access_token')) {
+          token = fragmentParams['access_token'];
+          print('Access token found in fragment: $token');
+        }
+      }
+
+      // Try to find token in full URL (more comprehensive approach)
+      if (token == null) {
+        final fullUrl = uri.toString();
+
+        // Look for 6-digit code in the URL (for simple PIN codes)
+        final pinRegExp = RegExp(r'code=(\d{6})');
+        final pinMatch = pinRegExp.firstMatch(fullUrl);
+        if (pinMatch != null && pinMatch.groupCount >= 1) {
+          token = pinMatch.group(1);
+          print('6-digit PIN extracted from URL: $token');
+        } else {
+          // Look for code= parameter in the full URL
+          final codeRegExp = RegExp(r'code=([^&]+)');
+          final codeMatch = codeRegExp.firstMatch(fullUrl);
+          if (codeMatch != null && codeMatch.groupCount >= 1) {
+            token = codeMatch.group(1);
+            print('Code extracted from URL: $token');
+          }
+        }
+      }
+
+      // Extract email from query parameters
+      if (uri.queryParameters.containsKey('email')) {
+        email = uri.queryParameters['email'];
+        print('Email parameter found: $email');
+      }
+
+      // If we have a token, navigate to reset password screen
+      if (token != null) {
+        print('Navigating to verification screen with token: $token');
+
+        // Navigate to verification screen with the token
+        _navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (context) => email != null
+                ? VerifyResetCodeScreen(email: email)
+                : VerifyResetCodeScreenWithOptionalEmail(),
+          ),
+          (route) => false,
+        );
+        return;
+      } else {
+        print('No token found in reset password link');
+        // If we have an email but no token, navigate to the verification screen
+        if (email != null) {
+          print('Navigating to verification screen with email');
+          _navigatorKey.currentState?.pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) =>
+                  VerifyResetCodeScreenWithOptionalEmail(email: email),
+            ),
+            (route) => false,
+          );
+          return;
+        } else {
+          // No token and no email - show error
+          _navigatorKey.currentState?.pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (context) => const ResetPasswordScreen(
+                errorMessage:
+                    'Invalid reset password link. Please request a new one.',
+              ),
+            ),
+            (route) => false,
+          );
+          return;
+        }
+      }
+    }
+
     // Check for email verification
     if (uri.path == '/verify' || uri.path.contains('verify')) {
       print('Email verification path detected');
@@ -142,112 +250,35 @@ class _MyAppState extends State<MyApp> {
             (route) => false,
           );
         }
-        return;
-      }
-    }
-
-    // Check for reset password path
-    if (uri.path == '/reset-password') {
-      print('Reset password path detected');
-
-      String? token;
-      String? email;
-
-      // Check for code parameter (Supabase recovery flow)
-      if (uri.queryParameters.containsKey('code')) {
-        token = uri.queryParameters['code'];
-        print('Code parameter found: $token');
-      }
-
-      // Check for token parameter (alternative approach)
-      if (token == null && uri.queryParameters.containsKey('token')) {
-        token = uri.queryParameters['token'];
-        print('Token parameter found: $token');
-      }
-
-      // Check for token in fragment (another alternative)
-      if (token == null && uri.fragment.isNotEmpty) {
-        final fragmentParams = Uri.splitQueryString(uri.fragment);
-        if (fragmentParams.containsKey('token')) {
-          token = fragmentParams['token'];
-          print('Token found in fragment: $token');
-        }
-      }
-
-      // Extract email from query parameters
-      if (uri.queryParameters.containsKey('email')) {
-        email = uri.queryParameters['email'];
-        print('Email parameter found: $email');
-      }
-
-      // If we have a token, navigate to reset password screen
-      if (token != null) {
-        print('Navigating to reset password screen with token');
-        _navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) =>
-                ResetPasswordScreen(token: token, email: email),
-          ),
-          (route) => false,
-        );
-      } else {
-        print('No token found in reset password link');
-        _navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => const ResetPasswordScreen(
-              errorMessage:
-                  'Invalid reset password link. Please request a new one.',
-            ),
-          ),
-          (route) => false,
-        );
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer2<ThemeProvider, AuthProvider>(
-      builder: (context, themeProvider, authProvider, child) {
-        return MaterialApp(
-          navigatorKey: _navigatorKey,
-          debugShowCheckedModeBanner: false,
-          initialRoute: '/splash',
-          routes: {
-            '/splash': (context) => const SplashScreen(),
-            '/': (context) => const AuthScreen(),
-            '/reset-password': (context) => const ResetPasswordScreen(),
-          },
-          onGenerateRoute: (settings) {
-            // Handle dynamic routes
-            if (settings.name != null &&
-                settings.name!.startsWith('/reset-password')) {
-              // Extract token from route if present
-              final uri = Uri.parse(settings.name!);
-              String? token;
-              String? email;
-
-              // Check query parameters
-              if (uri.queryParameters.containsKey('code')) {
-                token = uri.queryParameters['code'];
-                email = uri.queryParameters['email'];
-              } else if (uri.queryParameters.containsKey('token')) {
-                token = uri.queryParameters['token'];
-                email = uri.queryParameters['email'];
-              }
-
-              return MaterialPageRoute(
-                builder: (context) =>
-                    ResetPasswordScreen(token: token, email: email),
-              );
-            }
-            return null;
-          },
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode:
-              themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-        );
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    return MaterialApp(
+      navigatorKey: _navigatorKey,
+      debugShowCheckedModeBanner: false,
+      title: 'AnxieEase',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: themeProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      initialRoute: '/splash',
+      routes: {
+        '/splash': (context) => const SplashScreen(),
+        '/': (context) => const AuthScreen(),
+        '/reset-password': (context) => const ResetPasswordScreen(),
+        '/notifications': (context) => const NotificationsScreen(),
+      },
+      onGenerateRoute: (settings) {
+        if (settings.name == '/verify-reset-code') {
+          final args = settings.arguments as Map<String, dynamic>;
+          return MaterialPageRoute(
+            builder: (context) => VerifyResetCodeScreen(email: args['email']),
+          );
+        }
+        return null;
       },
     );
   }

@@ -239,17 +239,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      // Store context before the async gap
-      final navigatorContext = context;
-
-      // Use WidgetsBinding to ensure we're not in the middle of a build
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.of(navigatorContext).pushReplacement(
-            MaterialPageRoute(builder: (context) => const HomePage()),
-          );
-        }
-      });
+      // Navigate without using WidgetsBinding.addPostFrameCallback to prevent double-click issue
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const HomePage()),
+        (route) => false, // Remove all previous routes
+      );
     } catch (e) {
       if (!mounted) return;
 

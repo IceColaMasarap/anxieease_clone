@@ -7,13 +7,13 @@ class AuthScreen extends StatefulWidget {
   final bool showLogin;
 
   const AuthScreen({
-    super.key, 
+    super.key,
     this.message,
     this.showLogin = true,
   });
 
   @override
-  _AuthScreenState createState() => _AuthScreenState();
+  State<AuthScreen> createState() => _AuthScreenState();
 }
 
 class _AuthScreenState extends State<AuthScreen> {
@@ -23,10 +23,10 @@ class _AuthScreenState extends State<AuthScreen> {
   void initState() {
     super.initState();
     isLogin = widget.showLogin;
-    
+
     // Show message if provided
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (widget.message != null) {
+      if (widget.message != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(widget.message!),
@@ -39,20 +39,35 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return isLogin
-        ? LoginScreen(
-            onSwitch: () {
-              setState(() {
-                isLogin = false;
-              });
-            },
-          )
-        : RegisterScreen(
-            onSwitch: () {
-              setState(() {
-                isLogin = true;
-              });
-            },
-          );
+    // WillPopScope intercepts the back button press
+    return WillPopScope(
+      onWillPop: () async {
+        // If we're in the registration screen
+        if (!isLogin) {
+          // Switch to login screen instead of exiting the app
+          setState(() {
+            isLogin = true;
+          });
+          return false; // Prevent default back button behavior
+        }
+        // In login screen, allow normal back button behavior
+        return true;
+      },
+      child: isLogin
+          ? LoginScreen(
+              onSwitch: () {
+                setState(() {
+                  isLogin = false;
+                });
+              },
+            )
+          : RegisterScreen(
+              onSwitch: () {
+                setState(() {
+                  isLogin = true;
+                });
+              },
+            ),
+    );
   }
 }

@@ -4,6 +4,9 @@ import 'search.dart';
 import 'breathing_screen.dart';
 import 'calendar_screen.dart';
 import 'psychologist_profile.dart';
+import 'services/supabase_service.dart';
+import 'package:timeago/timeago.dart' as timeago;
+import 'screens/notifications_screen.dart';
 
 // Task class removed
 
@@ -73,6 +76,45 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _createTestNotificationsIfNeeded();
+  }
+
+  // Helper method to create test notifications if none exist
+  Future<void> _createTestNotificationsIfNeeded() async {
+    final supabaseService = SupabaseService();
+    try {
+      // Check if there are any notifications
+      final notifications = await supabaseService.getNotifications();
+
+      // If no notifications, create some test ones
+      if (notifications.isEmpty) {
+        await supabaseService.createNotification(
+          title: 'High Stress Level Detected',
+          message:
+              'Your stress level was recorded as 8/10. Consider using breathing exercises.',
+          type: 'alert',
+          relatedScreen: 'calendar',
+        );
+
+        await supabaseService.createNotification(
+          title: 'Anxiety Symptoms Logged',
+          message:
+              'You reported experiencing: Rapid heartbeat, Shortness of breath',
+          type: 'log',
+          relatedScreen: 'calendar',
+        );
+
+        await supabaseService.createNotification(
+          title: 'Mood Pattern Alert',
+          message:
+              'You\'ve been feeling anxious or fearful. Would you like to try some calming exercises?',
+          type: 'reminder',
+          relatedScreen: 'breathing_screen',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error creating test notifications: $e');
+    }
   }
 
   @override
@@ -954,70 +996,212 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // New Notifications Section
   Widget _buildNotificationsSection() {
-    // Sample notifications - replace with actual notifications from wearable
-    final List<Map<String, dynamic>> notifications = [
-      {
-        'title': 'High Heart Rate Detected',
-        'message': 'Your heart rate was above normal at 120 BPM',
-        'time': '2 min ago',
-        'type': 'warning',
-        'icon': Icons.favorite,
-      },
-      {
-        'title': 'Stress Level Alert',
-        'message': 'Elevated stress levels detected. Consider taking a break.',
-        'time': '15 min ago',
-        'type': 'alert',
-        'icon': Icons.warning_amber,
-      },
-      {
-        'title': 'Movement Pattern Change',
-        'message': 'Unusual movement patterns detected. Are you feeling okay?',
-        'time': '1 hour ago',
-        'type': 'info',
-        'icon': Icons.directions_walk,
-      },
-    ];
+    final supabaseService = SupabaseService();
+    final ValueNotifier<int> refreshCounter = ValueNotifier<int>(0);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              width: 3,
-              height: 20,
-              decoration: BoxDecoration(
-                color: Colors.teal[700],
-                borderRadius: BorderRadius.circular(3),
-              ),
+    Future<void> refreshNotifications() async {
+      refreshCounter.value++; // Force refresh
+    }
+
+    Future<void> handleAddTestNotification() async {
+      try {
+        await supabaseService.addTestNotification();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Test notification added!'),
+              duration: Duration(seconds: 2),
             ),
-            SizedBox(width: screenWidth * 0.02),
-            Text(
-              'Recent Notifications',
-              style: TextStyle(
-                fontSize: screenWidth * 0.045,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF1E2432),
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: screenHeight * 0.02),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: notifications.length,
-          itemBuilder: (context, index) {
-            final notification = notifications[index];
-            return _buildNotificationCard(
-              title: notification['title'],
-              message: notification['message'],
-              time: notification['time'],
-              type: notification['type'],
-              icon: notification['icon'],
+          );
+          await refreshNotifications();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: refreshCounter,
+      builder: (context, _, __) {
+        return FutureBuilder<List<Map<String, dynamic>>>(
+          key: ValueKey(refreshCounter.value),
+          future: supabaseService.getNotifications(),
+          builder: (context, snapshot) {
+            Widget buildHeader() {
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildSectionHeader('Recent Notifications'),
+                  Row(
+                    children: [
+                      // Add test notification button
+                      IconButton(
+                        icon: Icon(
+                          Icons.add_alert,
+                          color: Colors.teal[700],
+                        ),
+                        onPressed: handleAddTestNotification,
+                        tooltip: 'Add test notification',
+                      ),
+                      TextButton(
+                        onPressed: () async {
+                          final bool? notificationsModified =
+                              await Navigator.push<bool>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const NotificationsScreen(),
+                            ),
+                          );
+
+                          if (mounted && notificationsModified == true) {
+                            await refreshNotifications();
+                          }
+                        },
+                        child: Text(
+                          'See All',
+                          style: TextStyle(
+                            color: Colors.teal[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                buildHeader(),
+                SizedBox(height: screenHeight * 0.02),
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else if (snapshot.hasError)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Text('Could not load notifications'),
+                    ),
+                  )
+                else if (!snapshot.hasData || (snapshot.data?.isEmpty ?? true))
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.1),
+                          spreadRadius: 1,
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.notifications_off_outlined,
+                            size: 48,
+                            color: Colors.grey[300],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'No notifications yet',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount:
+                        snapshot.data!.length > 3 ? 3 : snapshot.data!.length,
+                    itemBuilder: (context, index) {
+                      final notification = snapshot.data![index];
+                      final DateTime createdAt =
+                          DateTime.parse(notification['created_at']);
+                      final String timeAgo = timeago.format(createdAt);
+
+                      IconData icon;
+                      String type;
+
+                      switch (notification['type']) {
+                        case 'alert':
+                          icon = Icons.warning_amber;
+                          type = 'alert';
+                          break;
+                        case 'reminder':
+                          icon = Icons.notifications_active;
+                          type = 'info';
+                          break;
+                        case 'log':
+                          icon = Icons.check_circle;
+                          type = 'warning';
+                          break;
+                        default:
+                          icon = Icons.notifications;
+                          type = 'info';
+                      }
+
+                      return _buildNotificationCard(
+                        title: notification['title'],
+                        message: notification['message'],
+                        time: timeAgo,
+                        type: type,
+                        icon: icon,
+                      );
+                    },
+                  ),
+              ],
             );
           },
+        );
+      },
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Row(
+      children: [
+        Container(
+          width: 3,
+          height: 20,
+          decoration: BoxDecoration(
+            color: Colors.teal[700],
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        SizedBox(width: screenWidth * 0.02),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: screenWidth * 0.045,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF1E2432),
+          ),
         ),
       ],
     );

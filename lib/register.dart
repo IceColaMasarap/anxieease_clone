@@ -337,25 +337,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _submit(BuildContext context) async {
-    // Set form as submitted to show validation errors
+    // Reset validation states first
     setState(() {
-      _formSubmitted = true;
+      _resetFieldErrors();
+      _formSubmitted = false;
     });
 
+    // Validate fields
     if (!_validateFields()) {
-      // Show a general error message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fix the errors in the form'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      setState(() {
+        _formSubmitted = true; // Only show errors if validation fails
+      });
       return;
     }
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const Center(child: CircularProgressIndicator());
+        },
+      );
+
       // Combine first, middle, and last name into full name
       String fullName = firstNameController.text.trim();
       if (middleNameController.text.trim().isNotEmpty) {
@@ -369,57 +376,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
         fullName: fullName,
       );
 
+      // Close loading indicator
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Reset validation states after successful registration
+      setState(() {
+        _resetFieldErrors();
+        _formSubmitted = false;
+      });
+
       // Check if widget is still mounted before showing dialog
       if (!mounted) return;
 
-      // Show success dialog using addPostFrameCallback to avoid async gap issues
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext dialogContext) {
-            return AlertDialog(
-              title: const Text('Check Your Email'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Your account has been created successfully. Please check your email for a verification link.',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    'Verification email sent to: ${emailController.text.trim()}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'After verifying your email, you can log in to your account.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(dialogContext).pop(); // Close dialog
-                    widget.onSwitch(); // Switch to login screen
-                  },
-                  child: const Text('Go to Login'),
+      // Show success dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('Check Your Email'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Your account has been created successfully. Please check your email for a verification link.',
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Verification email sent to: ${emailController.text.trim()}',
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'After verifying your email, you can log in to your account.',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
               ],
-            );
-          },
-        );
-      });
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(); // Close dialog
+                  widget.onSwitch(); // Switch to login screen
+                },
+                child: const Text('Go to Login'),
+              ),
+            ],
+          );
+        },
+      );
     } catch (e) {
+      // Close loading indicator if it's showing
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.of(context).pop();
+      }
+
       // Check if widget is still mounted before showing error
       if (!mounted) return;
 
@@ -430,28 +445,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
         errorMessage = errorMessage.replaceAll('Exception: ', '');
       }
 
-      // Use addPostFrameCallback to avoid using context across async gaps
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-
-        // Show error message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'OK',
-              textColor: Colors.white,
-              onPressed: () {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                }
-              },
-            ),
+      // Show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {
+              if (mounted) {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              }
+            },
           ),
-        );
-      });
+        ),
+      );
     }
   }
 
@@ -482,23 +492,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   alignment: Alignment.centerLeft,
                   padding: const EdgeInsets.symmetric(horizontal: 30),
-                  child: const Column(
+                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Let's",
+                      const Text("Let's",
                           style: TextStyle(
                               fontSize: 37,
                               color: Colors.white,
                               fontWeight: FontWeight.w300,
                               letterSpacing: 3.0)),
-                      Text("Create your",
+                      const Text("Create your",
                           style: TextStyle(
                               fontSize: 45,
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 4.0)),
-                      Text("Account",
+                      const Text("Account",
                           style: TextStyle(
                               fontSize: 45,
                               color: Colors.white,
